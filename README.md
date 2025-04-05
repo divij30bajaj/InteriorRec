@@ -10,8 +10,11 @@
 - `npm run dev`
    
 ### Steps to run backend
-- if first time running, then do a `pip install -r requirements.txt`
+- if first time running, then do a `pip install -r requirements.txt`. **NOTE** Used Python 3.12.9
 - `python -m uvicorn app:app --port 5000 --reload`
+
+### Additional files:
+- *embedded_data.json*: used by retriever.py, also can be used by boolean retriever
 
 ### TODO:
 - Convert input room image to grid, and extract grid size and door/window cell positions --DONE
