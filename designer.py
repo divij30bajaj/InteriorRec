@@ -1,18 +1,20 @@
 import json
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-import matplotlib.image as mpimg
 import os
+
+import matplotlib.image as mpimg
+import matplotlib.patches as patches
+import matplotlib.pyplot as plt
 import tqdm
 
 from constant import ITEM_DESCRIPTIONS
 from model import Model
-from utils import extract_info, extract_bbox
+from retriever import simple_retriever
+from utils import extract_bbox, extract_info
 
-
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 class Designer:
     def __init__(self, room_dimensions, scene_image, constraints, requirement, verbose=False):
-        self.model = Model(key="<YOUR-OPENAI-KEY>")
+        self.model = Model(key=OPENAI_API_KEY)
         self.num_rows = room_dimensions[0]
         self.num_cols = room_dimensions[1]
         self.scene_image = scene_image
@@ -68,16 +70,16 @@ class Designer:
         plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
 
     def understand_image_and_task(self):
-        initial_prompt = """This is an image of a room layout. Tell me everything you observe about the room."""
-        response = self.model.query(initial_prompt, self.scene_image)
-        if self.verbose:
-            print(response)
+        # initial_prompt = """This is an image of a room layout. Tell me everything you observe about the room."""
+        # response = self.model.query(initial_prompt, self.scene_image)
+        # if self.verbose:
+        #     print(response)
 
-        introductory = f"""Yes, the gray area is marked as walls and the red blocks denote the door and window. Given 
-        this layout of a room, I want to design an **aesthetically pleasing {requirement}**. The cells highlighted in 
-        color (walls, door, window) are blocked and cannot be used to keep any items. First, list the furniture items 
-        (not bedding, vase etc.) to be placed in the room, sorted by their size in decreasing order. Remember the bed 
-        is the biggest so it comes first. Keep in mind that I will ask you to place these objects on the grid in 
+        introductory = f"""You are an seasoned interior designer. Given this layout of a room. The surrounding gray area is marked as walls and the red blocks
+        denote the door and windows. Given the following requirements, I want to design an **aesthetically pleasing {self.requirement}**. 
+        The cells highlighted in color (walls, door, window) are blocked and cannot be used to keep any items. First, list the furniture items 
+        (not bedding, vase etc.) to be placed in the room, sorted by their size in decreasing order.
+        Keep in mind that I will ask you to place these objects on the grid in 
         later prompts. Just list the furniture in sorted order for now in a JSON format, with a list of items, 
         and each item is a dict with 2 keys: name of the furniture and a short description """
 
@@ -91,20 +93,22 @@ class Designer:
         if self.verbose:
             print(self.list_of_objects)
 
-    def run_critic(self, name, image_path):
-        critic_prompt = f"""Refer the list of blocked cells and the grid position from your last response. Now do you 
-        think your grid position does not overlap with any of the blocked cell? Overlapping DOES NOT mean when one 
+    def run_critic(self, name, image_path, item_id, length, width):
+        critic_prompt = f"""You are an seasoned interior designer who corrects the placement of the furniture. 
+        Refer the list of blocked cells and the grid position from the last response. Ensure, that room space is 
+        utilized properly and no doors are blocked. Now do you 
+        think this grid position does not overlap with any of the blocked cell? Overlapping DOES NOT mean when one 
         edge is common. If the green block is superimposed over any blocked cell, give another set of cells and 
         orientation for the green block in the below format:\nGRID: <Start row number>, <Start column 
         number>\nORIENTATION: <Orientation of the {name}>. If current position is good, output the same position 
-        again """
+        again. """
         critic_response = self.model.query(critic_prompt, self.intermediate_image)
         if self.verbose:
             print(critic_response)
         start_row, start_col, orientation = extract_info(critic_response)
-        start_col, start_row, end_col, end_row = extract_bbox(start_row, start_col, name)
+        end_col, end_row = (start_col + width, start_row + length) if orientation.lower() == "vertical" else (start_col + length, start_row + width)
 
-        self.design.append({"object": name, "start": (start_row, start_col), "end": (end_row, end_col)})
+        self.design.append({"object": name, "start": (start_row, start_col), "end": (end_row, end_col), "item_id": item_id})
         self.place_object((start_col, start_row, end_col, end_row), name, image_path, self.final_image)
 
     def add_objects(self):
@@ -121,10 +125,16 @@ class Designer:
 
         for i, obj in tqdm.tqdm(enumerate(self.list_of_objects)):
             name = obj["name"]
-            iterative_prompt = f"""We want to place the {name} in the room. Refer the below dictionary for 
-            aesthetic understanding of the {name}:\n{json.dumps(ITEM_DESCRIPTIONS[name])}\nPlace the {name} strictly 
-            {ITEM_DESCRIPTIONS[name]['position']} taking no more than the size mentioned in the dictionary. The cells blocked 
-            until now are: {blocked_cells}\nThen, output your logic to place the {name} by not including any cells that are in 
+            description = obj["description"]
+            retrieved_object = simple_retriever(description)[0][0]
+            print("retrieved_object: ", retrieved_object["item_id"], retrieved_object["dimensions"])
+            # Convert dimensions from inches to grid cells (12 inches = 1 foot = 1 cell)
+            length = retrieved_object["dimensions"]["length"]//12  # Convert inches to feet (cells)
+            width = retrieved_object["dimensions"]["width"]//12    # Convert inches to feet (cells)
+            iterative_prompt = f"""You are an seasoned interior designer who is great at creating the best interior designs by placing the furnitures
+            at their best places according to the requirements and furniture already placed. We want to place the {name} in the room.
+            The {name} is {length} cells long and {width} cells wide respectively.
+            The cells blocked because of already placed furniture until now are: {blocked_cells}\nThen, output your logic to place the {name} by not including any cells that are in 
             the blocked list. In the end, write the following in 2 different lines and nothing else:\nGRID: <Start row number>, 
             <start column number>\nORIENTATION: <Orientation of the {name}> """
             if self.verbose:
@@ -138,7 +148,7 @@ class Designer:
                 print(response)
 
             start_row, start_col, orientation = extract_info(response)
-            start_col, start_row, end_col, end_row = extract_bbox(start_row, start_col, name)
+            end_col, end_row = (start_col + width, start_row + length) if orientation.lower() == "vertical" else (start_col + length, start_row + width)
 
             row_str = f"Rows {start_row} to {end_row}" if start_row != end_row else f"Rows {start_row}"
             col_str = f"Columns {start_col} to {end_col}" if start_col != end_col else f"Columns {start_col}"
@@ -146,12 +156,13 @@ class Designer:
 
             self.place_object((start_col, start_row, end_col, end_row), name, image_path, self.intermediate_image)
 
-            self.run_critic(name, image_path)
+            self.run_critic(name, image_path, retrieved_object["item_id"], length, width)
 
     def write_to_json(self):
-        f = open('results/design.json', 'w')
-        json.dump(self.design, f)
-        f.close()
+        if os.path.exists('results/design.json'):
+            os.remove('results/design.json')
+        with open('results/design.json', 'w') as f:
+            json.dump(self.design, f)
 
     def run(self):
         self.understand_image_and_task()

@@ -1,0 +1,289 @@
+import json
+import math
+import os
+import sys
+import traceback
+from typing import List, Optional, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageDraw, ImageFont
+from pydantic import BaseModel
+
+# Add the parent directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from designer import Designer
+
+
+# Pydantic models for request validation
+class DoorWindow(BaseModel):
+    wall: str
+    position: float
+    width: float
+    height: float
+
+class RoomSpec(BaseModel):
+    length: float  # in feet
+    width: float   # in feet
+    doors: List[DoorWindow]
+    windows: List[DoorWindow]
+    description: str
+
+class DesignItem(BaseModel):
+    object: str
+    start: Tuple[int, int]
+    end: Tuple[int, int]
+    item_id: str
+
+class DesignResponse(BaseModel):
+    items: List[DesignItem]
+
+app = FastAPI()
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount the 3D models directory
+app.mount("/models", StaticFiles(directory="/Volumes/X9 Pro/isr dataset/filtered"), name="models")
+
+def create_room_grid_image(room_spec: RoomSpec, filename: str) -> None:
+    """
+    Creates and saves a grid image (PNG) of the room specified by `room_spec` with labels.
+    
+    Color legend:
+      - Walls (outer boundary): Gray with label "wall"
+      - Interior: White (no label)
+      - Doors & Windows: Red with labels "door" or "window"
+      - Grid lines: Black
+    Each cell is treated as 1 ft x 1 ft.
+    """
+    
+    # Determine grid dimensions (each cell is 1 ft x 1 ft)
+    rows = int(math.ceil(room_spec.length))  # vertical cells
+    cols = int(math.ceil(room_spec.width))     # horizontal cells
+    
+    # Set cell pixel size (adjust to scale the image)
+    cell_size = 50
+    
+    # Define colors
+    COLOR_WALL = (128, 128, 128)         # Gray
+    COLOR_INTERIOR = (255, 255, 255)     # White
+    COLOR_DOOR_WINDOW = (255, 0, 0)        # Red
+    COLOR_GRID = (0, 0, 0)               # Black
+    
+    # Create a new image with a white background.
+    img_width = cols * cell_size
+    img_height = rows * cell_size
+    image = Image.new("RGB", (img_width, img_height), COLOR_INTERIOR)
+    draw = ImageDraw.Draw(image)
+    
+    # 2D list to keep track of labels per cell.
+    cell_labels = [['' for _ in range(cols)] for _ in range(rows)]
+    
+    # 1) Draw the outer wall cells in gray and label them as "wall"
+    for r in range(rows):
+        for c in range(cols):
+            if r == 0 or r == rows - 1 or c == 0 or c == cols - 1:
+                x1 = c * cell_size
+                y1 = r * cell_size
+                x2 = x1 + cell_size
+                y2 = y1 + cell_size
+                draw.rectangle([x1, y1, x2, y2], fill=COLOR_WALL, outline=COLOR_GRID)
+                cell_labels[r][c] = "wall"
+    
+    # Fill the interior cells with white (unlabeled)
+    for r in range(1, rows - 1):
+        for c in range(1, cols - 1):
+            x1 = c * cell_size
+            y1 = r * cell_size
+            x2 = x1 + cell_size
+            y2 = y1 + cell_size
+            draw.rectangle([x1, y1, x2, y2], fill=COLOR_INTERIOR, outline=COLOR_GRID)
+    
+    # 2) Helper function: given a DoorWindow, compute the grid cells it should occupy.
+    def get_cells_for_dw(dw: DoorWindow) -> List[tuple]:
+        cells = []
+        wall = dw.wall.lower()
+        door_width = int(round(dw.width))
+        door_height = 1
+        
+        # For north and south walls, the wall length is the number of columns.
+        if wall in ["north", "south"]:
+            total_cells = cols  # total cells along the wall
+            center = int(round(dw.position * (total_cells - 1)))
+            start = center - door_width // 2
+            end = start + door_width
+            if wall == "north":
+                for c in range(start, end):
+                    for h in range(door_height):
+                        r = 0 + h  # extends downward from the top wall
+                        if 0 <= c < cols and 0 <= r < rows:
+                            cells.append((r, c))
+            elif wall == "south":
+                for c in range(start, end):
+                    for h in range(door_height):
+                        r = rows - 1 - h  # extends upward from the bottom wall
+                        if 0 <= c < cols and 0 <= r < rows:
+                            cells.append((r, c))
+        # For east and west walls, the wall length is the number of rows.
+        elif wall in ["east", "west"]:
+            total_cells = rows  # total cells along the wall
+            center = int(round(dw.position * (total_cells - 1)))
+            start = center - door_width // 2
+            end = start + door_width
+            if wall == "west":
+                for r in range(start, end):
+                    for h in range(door_height):
+                        c = 0 + h  # extends rightward from the left wall
+                        if 0 <= c < cols and 0 <= r < rows:
+                            cells.append((r, c))
+            elif wall == "east":
+                for r in range(start, end):
+                    for h in range(door_height):
+                        c = cols - 1 - h  # extends leftward from the right wall
+                        if 0 <= c < cols and 0 <= r < rows:
+                            cells.append((r, c))
+        return cells
+
+    # 3) Draw door/window cells in red and label them accordingly.
+    def apply_door_window(dw: DoorWindow, label: str):
+        for (r, c) in get_cells_for_dw(dw):
+            x1 = c * cell_size
+            y1 = r * cell_size
+            x2 = x1 + cell_size
+            y2 = y1 + cell_size
+            draw.rectangle([x1, y1, x2, y2], fill=COLOR_DOOR_WINDOW, outline=COLOR_GRID)
+            cell_labels[r][c] = label
+
+    for door in room_spec.doors:
+        apply_door_window(door, "door")
+    
+    for window in room_spec.windows:
+        apply_door_window(window, "window")
+    
+    # 4) Draw grid lines over the entire image.
+    for r in range(rows + 1):
+        draw.line([(0, r * cell_size), (img_width, r * cell_size)], fill=COLOR_GRID)
+    for c in range(cols + 1):
+        draw.line([(c * cell_size, 0), (c * cell_size, img_height)], fill=COLOR_GRID)
+    
+    # 5) Draw labels in the center of each cell.
+    try:
+        # Attempt to use a truetype font (Arial) if available.
+        font = ImageFont.truetype("arial.ttf", size=14)
+    except IOError:
+        font = ImageFont.load_default()
+    
+    for r in range(rows):
+        for c in range(cols):
+            text = cell_labels[r][c]
+            if text:
+                center_x = c * cell_size + cell_size / 2
+                center_y = (r) * cell_size + cell_size / 2
+                # text_width, text_height = draw.textlength(text, font=font), font.size * r
+                bbox = draw.textbbox((0, 0), text, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                # Use white text for walls (dark background) and black for door/window.
+                text_color = (255, 255, 0) if text == "wall" else (0, 0, 0)
+                draw.text((center_x - text_width / 2, center_y - text_height / 2),
+                          text, font=font, fill=text_color)
+    
+    # Save the resulting image
+    image.save(filename, "PNG")
+
+@app.post("/generate-design", response_model=DesignResponse)
+async def generate_design(room_spec: RoomSpec):
+    try:
+        # Convert room dimensions to grid dimensions (1 foot = 1 cell)
+        num_rows = int(room_spec.length)
+        num_cols = int(room_spec.width)
+        
+        # Create the room image with constraints
+        create_room_grid_image(room_spec, 'images/case2.png')
+        
+        # Convert door and window positions to grid constraints
+        constraints = []
+        
+        # Convert doors to constraints
+        for door in room_spec.doors:
+            wall = door.wall
+            position = door.position
+            width = door.width
+            
+            # Convert wall position to grid coordinates
+            if wall == 'north':
+                start = (0, int(position * num_cols))
+                end = (0, min(num_cols - 1, int((position + width/room_spec.width) * num_cols)))
+            elif wall == 'south':
+                start = (num_rows - 1, int(position * num_cols))
+                end = (num_rows - 1, min(num_cols - 1, int((position + width/room_spec.width) * num_cols)))
+            elif wall == 'east':
+                start = (int(position * num_rows), num_cols - 1)
+                end = (min(num_rows - 1, int((position + width/room_spec.length) * num_rows)), num_cols - 1)
+            else:  # west
+                start = (int(position * num_rows), 0)
+                end = (min(num_rows - 1, int((position + width/room_spec.length) * num_rows)), 0)
+            
+            constraints.append({
+                "object": "Door",
+                "start": start,
+                "end": end
+            })
+        
+        # Convert windows to constraints
+        for window in room_spec.windows:
+            wall = window.wall
+            position = window.position
+            width = window.width
+            
+            if wall == 'north':
+                start = (0, int(position * num_cols))
+                end = (0, min(num_cols - 1, int((position + width/room_spec.width) * num_cols)))
+            elif wall == 'south':
+                start = (num_rows - 1, int(position * num_cols))
+                end = (num_rows - 1, min(num_cols - 1, int((position + width/room_spec.width) * num_cols)))
+            elif wall == 'east':
+                start = (int(position * num_rows), num_cols - 1)
+                end = (min(num_rows - 1, int((position + width/room_spec.length) * num_rows)), num_cols - 1)
+            else:  # west
+                start = (int(position * num_rows), 0)
+                end = (min(num_rows - 1, int((position + width/room_spec.length) * num_rows)), 0)
+            
+            constraints.append({
+                "object": "Window",
+                "start": start,
+                "end": end
+            })
+        
+        # Initialize and run the designer
+        designer = Designer(
+            room_dimensions=(num_rows, num_cols),
+            scene_image='images/case2.png',
+            constraints=constraints,
+            requirement=room_spec.description
+        )
+        
+        designer.run()
+        
+        # Read the generated design
+        with open('results/design.json', 'r') as f:
+            design = json.load(f)
+        
+        return {"items": design}
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
