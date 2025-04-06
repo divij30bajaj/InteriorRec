@@ -60,10 +60,10 @@ const Room = ({ roomLength, roomWidth, doors, windows, showWalls = true, design 
 
   // Convert grid position to world position
   const gridToWorld = (gridX: number, gridY: number): [number, number, number] => {
-    const cellWidth = roomLength / 12;
-    const cellHeight = roomWidth / 11;
-    const x = (gridX - 6) * cellWidth; // Center the grid
-    const z = (gridY - 5.5) * cellHeight; // Center the grid
+    const cellWidth = 1;
+    const cellHeight = 1;
+    const x = (gridX - halfLength) * cellWidth; // Center the grid
+    const z = (gridY - halfWidth) * cellHeight; // Center the grid
     return [x, 0, z];
   };
 
@@ -144,13 +144,14 @@ const Room = ({ roomLength, roomWidth, doors, windows, showWalls = true, design 
 
       {/* Add furniture */}
       {design?.items.map((item, index) => {
-        const position = gridToWorld(item.start[1], item.start[0]);
+        const position = gridToWorld((item.start[1]+item.end[1])/2, (item.start[0]+item.end[0])/2);
+        console.log(item,index, position);
         return (
           <Furniture
             key={`furniture-${index}`}
-            itemId={item.item_id}
+            item={item}
             position={position}
-            scale={0.0254} // Convert inches to meters
+            scale={3} // Convert inches to meters
           />
         );
       })}

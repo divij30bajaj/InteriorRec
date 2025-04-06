@@ -1,4 +1,5 @@
 import json
+import math
 import os
 
 import matplotlib.image as mpimg
@@ -6,10 +7,9 @@ import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import tqdm
 
-from constant import ITEM_DESCRIPTIONS
 from model import Model
 from retriever import simple_retriever
-from utils import extract_bbox, extract_info
+from utils import extract_info
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 class Designer:
@@ -36,12 +36,12 @@ class Designer:
     def place_object(self, box, name, image_path, output_path):
         image = mpimg.imread(image_path)
 
-        cell_col = image.shape[1] // self.num_cols
-        cell_row = image.shape[0] // self.num_rows
+        cell_col = image.shape[0] // (self.num_cols+1)
+        cell_row = image.shape[1] // (self.num_rows+1)
 
-        bbox = (
-            box[0] * cell_col, box[1] * cell_row, (box[2] - box[0] + 1) * cell_col, (box[3] - box[1] + 1) * cell_row)
-
+        bbox = ( (box[0]+1) * cell_col , (box[1]+1) * cell_row , (box[2] - box[0] ) * cell_col, (box[3] - box[1]) * cell_row )
+        
+        print("placing object", box, name, bbox)
         fig, ax = plt.subplots()
 
         if output_path == self.intermediate_image:
@@ -80,22 +80,21 @@ class Designer:
         The cells highlighted in color (walls, door, window) are blocked and cannot be used to keep any items. First, list the furniture items 
         (not bedding, vase etc.) to be placed in the room, sorted by their size in decreasing order.
         Keep in mind that I will ask you to place these objects on the grid in 
-        later prompts. Just list the furniture in sorted order for now in a JSON format, with a list of items, 
-        and each item is a dict with 2 keys: name of the furniture and a short description """
+        later prompts. Just list the furniture items in sorted order in the JSON format and nothing else: [{{'name': 'name of the furniture', 'description': 'a short description'}}, ...] """
 
         response = self.model.query(introductory, self.scene_image)
         if self.verbose:
-            print(response)
+            print("understand_image_and_task:", response)
 
         response = response.replace("```json", "").replace("```", "").strip()
         self.list_of_objects = json.loads(response)
 
         if self.verbose:
-            print(self.list_of_objects)
+            print("list_of_objects:", self.list_of_objects)
 
     def run_critic(self, name, image_path, item_id, length, width):
         critic_prompt = f"""You are an seasoned interior designer who corrects the placement of the furniture. 
-        Refer the list of blocked cells and the grid position from the last response. Ensure, that room space is 
+        Look at the green box on the grid, which is the current placement of the {name}. Ensure, that room space is 
         utilized properly and no doors are blocked. Now do you 
         think this grid position does not overlap with any of the blocked cell? Overlapping DOES NOT mean when one 
         edge is common. If the green block is superimposed over any blocked cell, give another set of cells and 
@@ -104,7 +103,7 @@ class Designer:
         again. """
         critic_response = self.model.query(critic_prompt, self.intermediate_image)
         if self.verbose:
-            print(critic_response)
+            print("critic_response:", critic_response)
         start_row, start_col, orientation = extract_info(critic_response)
         end_col, end_row = (start_col + width, start_row + length) if orientation.lower() == "vertical" else (start_col + length, start_row + width)
 
@@ -127,25 +126,25 @@ class Designer:
             name = obj["name"]
             description = obj["description"]
             retrieved_object = simple_retriever(description)[0][0]
-            print("retrieved_object: ", retrieved_object["item_id"], retrieved_object["dimensions"])
+
             # Convert dimensions from inches to grid cells (12 inches = 1 foot = 1 cell)
-            length = retrieved_object["dimensions"]["length"]//12  # Convert inches to feet (cells)
-            width = retrieved_object["dimensions"]["width"]//12    # Convert inches to feet (cells)
+            length = math.ceil(retrieved_object["dimensions"]["length"]/12)  # Convert inches to feet (cells)
+            width = math.ceil(retrieved_object["dimensions"]["width"]/12)    # Convert inches to feet (cells)
+            
+            print("retrieved_object: ", retrieved_object["item_id"], retrieved_object["dimensions"], length, width)
             iterative_prompt = f"""You are an seasoned interior designer who is great at creating the best interior designs by placing the furnitures
             at their best places according to the requirements and furniture already placed. We want to place the {name} in the room.
             The {name} is {length} cells long and {width} cells wide respectively.
             The cells blocked because of already placed furniture until now are: {blocked_cells}\nThen, output your logic to place the {name} by not including any cells that are in 
             the blocked list. In the end, write the following in 2 different lines and nothing else:\nGRID: <Start row number>, 
             <start column number>\nORIENTATION: <Orientation of the {name}> """
-            if self.verbose:
-                print(iterative_prompt)
             if i == 0:
                 image_path = self.scene_image
             else:
                 image_path = self.final_image
             response = self.model.query(iterative_prompt, image_path)
             if self.verbose:
-                print(response)
+                print("add_objects for ", name, ":", response)
 
             start_row, start_col, orientation = extract_info(response)
             end_col, end_row = (start_col + width, start_row + length) if orientation.lower() == "vertical" else (start_col + length, start_row + width)
@@ -167,35 +166,4 @@ class Designer:
     def run(self):
         self.understand_image_and_task()
         self.add_objects()
-
-
-if __name__ == '__main__':
-
-    ################### TODO: Generalize it ######
-    num_cols = 13
-    num_rows = 12
-    constraints = [
-        {
-            "object": "Window",
-            "start": (2, 4),
-            "end": (2, 8)
-        },
-        {
-            "object": "Door",
-            "start": (10, 3),
-            "end": (10, 5)
-        },
-    ]
-    #################################################
-
-    initial_image = 'images/case2.png'
-    requirement = "a minimalist bedroom"
-
-    # Add verbose=True for model responses
-    designer = Designer(room_dimensions=(num_rows, num_cols),
-                        scene_image=initial_image,
-                        constraints=constraints,
-                        requirement=requirement,
-                        verbose=True)
-    designer.run()
-    designer.write_to_json()
+        self.write_to_json()

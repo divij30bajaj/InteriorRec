@@ -1,41 +1,47 @@
 import { useRef, useEffect, useState } from 'react';
 import { useLoader } from '@react-three/fiber';
-import { GLTFLoader, GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
+import { GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
+import { DesignItem } from '../services/designService';
 
 interface FurnitureProps {
-  itemId: string;
+  item: DesignItem;
   position: [number, number, number];
   scale?: number;
 }
 
-const Furniture = ({ itemId, position, scale = 0.0254 }: FurnitureProps) => {
+const Furniture = ({ item, position, scale = 1 }: FurnitureProps) => {
   const [error, setError] = useState(false);
   const groupRef = useRef<THREE.Group>(null);
 
   // Try to load the model, fallback to a simple box if it fails
   const gltf = useLoader(
     GLTFLoader,
-    `http://localhost:5000/models/${itemId}.glb`,
-    undefined,
-    (error) => {
-      console.error(`Error loading model:`, error);
-      setError(true);
+    `objects/${item.item_id}.glb`,
+    (loader) => {
+      loader.manager.onError = (url: string) => {
+        console.error(`Error loading model: ${url}`);
+        setError(true);
+      };
     }
   ) as GLTF;
 
   useEffect(() => {
-    if (gltf?.scene && groupRef.current) {
+    if (gltf.scene && groupRef.current) {
       // Center the model
       const box = new THREE.Box3().setFromObject(gltf.scene);
-      const center = box.getCenter(new THREE.Vector3());
-      gltf.scene.position.sub(center);
-      
-      // Add the model to the group
+      console.log(box)
+      const height = box.max.y - box.min.y;
+      const width = box.max.x - box.min.x;
+      const depth = box.max.z - box.min.z;
+      console.log(height, width, depth)
       groupRef.current.add(gltf.scene);
+    } else {
+      console.log('Model or group ref not available');
     }
-  }, [gltf]);
+  }, [gltf, item.item_id]);
 
   if (error) {
     // Fallback to a simple box with the item ID as text
@@ -52,7 +58,7 @@ const Furniture = ({ itemId, position, scale = 0.0254 }: FurnitureProps) => {
           anchorX="center"
           anchorY="middle"
         >
-          {itemId}
+          {item.item_id}
         </Text>
       </group>
     );

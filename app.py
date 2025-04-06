@@ -3,14 +3,10 @@ import math
 import os
 import sys
 import traceback
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
-import matplotlib.pyplot as plt
-import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
 
@@ -54,9 +50,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount the 3D models directory
-app.mount("/models", StaticFiles(directory="/Volumes/X9 Pro/isr dataset/filtered"), name="models")
-
 def create_room_grid_image(room_spec: RoomSpec, filename: str) -> None:
     """
     Creates and saves a grid image (PNG) of the room specified by `room_spec` with labels.
@@ -70,11 +63,18 @@ def create_room_grid_image(room_spec: RoomSpec, filename: str) -> None:
     """
     
     # Determine grid dimensions (each cell is 1 ft x 1 ft)
-    rows = int(math.ceil(room_spec.length))  # vertical cells
-    cols = int(math.ceil(room_spec.width))     # horizontal cells
+    rows = int(math.ceil(room_spec.width))  # vertical cells
+    cols = int(math.ceil(room_spec.length))     # horizontal cells
     
-    # Set cell pixel size (adjust to scale the image)
+    # Set cell pixel size and margin (for axis labels)
     cell_size = 50
+    margin = cell_size  # margin for axis numbers
+    offset_x = margin
+    offset_y = margin
+    
+    # New image dimensions include the margins.
+    img_width = cols * cell_size + offset_x
+    img_height = rows * cell_size + offset_y
     
     # Define colors
     COLOR_WALL = (128, 128, 128)         # Gray
@@ -83,30 +83,28 @@ def create_room_grid_image(room_spec: RoomSpec, filename: str) -> None:
     COLOR_GRID = (0, 0, 0)               # Black
     
     # Create a new image with a white background.
-    img_width = cols * cell_size
-    img_height = rows * cell_size
     image = Image.new("RGB", (img_width, img_height), COLOR_INTERIOR)
     draw = ImageDraw.Draw(image)
     
     # 2D list to keep track of labels per cell.
     cell_labels = [['' for _ in range(cols)] for _ in range(rows)]
     
-    # 1) Draw the outer wall cells in gray and label them as "wall"
+    # 1) Draw the outer wall cells (offset by margin) in gray and label them as "wall"
     for r in range(rows):
         for c in range(cols):
             if r == 0 or r == rows - 1 or c == 0 or c == cols - 1:
-                x1 = c * cell_size
-                y1 = r * cell_size
+                x1 = offset_x + c * cell_size
+                y1 = offset_y + r * cell_size
                 x2 = x1 + cell_size
                 y2 = y1 + cell_size
                 draw.rectangle([x1, y1, x2, y2], fill=COLOR_WALL, outline=COLOR_GRID)
                 cell_labels[r][c] = "wall"
     
-    # Fill the interior cells with white (unlabeled)
+    # Fill the interior cells (if any) with white (they remain unlabeled)
     for r in range(1, rows - 1):
         for c in range(1, cols - 1):
-            x1 = c * cell_size
-            y1 = r * cell_size
+            x1 = offset_x + c * cell_size
+            y1 = offset_y + r * cell_size
             x2 = x1 + cell_size
             y2 = y1 + cell_size
             draw.rectangle([x1, y1, x2, y2], fill=COLOR_INTERIOR, outline=COLOR_GRID)
@@ -159,8 +157,8 @@ def create_room_grid_image(room_spec: RoomSpec, filename: str) -> None:
     # 3) Draw door/window cells in red and label them accordingly.
     def apply_door_window(dw: DoorWindow, label: str):
         for (r, c) in get_cells_for_dw(dw):
-            x1 = c * cell_size
-            y1 = r * cell_size
+            x1 = offset_x + c * cell_size
+            y1 = offset_y + r * cell_size
             x2 = x1 + cell_size
             y2 = y1 + cell_size
             draw.rectangle([x1, y1, x2, y2], fill=COLOR_DOOR_WINDOW, outline=COLOR_GRID)
@@ -172,11 +170,15 @@ def create_room_grid_image(room_spec: RoomSpec, filename: str) -> None:
     for window in room_spec.windows:
         apply_door_window(window, "window")
     
-    # 4) Draw grid lines over the entire image.
+    # 4) Draw grid lines over the entire grid area.
     for r in range(rows + 1):
-        draw.line([(0, r * cell_size), (img_width, r * cell_size)], fill=COLOR_GRID)
+        start = (offset_x, offset_y + r * cell_size)
+        end = (offset_x + cols * cell_size, offset_y + r * cell_size)
+        draw.line([start, end], fill=COLOR_GRID)
     for c in range(cols + 1):
-        draw.line([(c * cell_size, 0), (c * cell_size, img_height)], fill=COLOR_GRID)
+        start = (offset_x + c * cell_size, offset_y)
+        end = (offset_x + c * cell_size, offset_y + rows * cell_size)
+        draw.line([start, end], fill=COLOR_GRID)
     
     # 5) Draw labels in the center of each cell.
     try:
@@ -189,17 +191,42 @@ def create_room_grid_image(room_spec: RoomSpec, filename: str) -> None:
         for c in range(cols):
             text = cell_labels[r][c]
             if text:
-                center_x = c * cell_size + cell_size / 2
-                center_y = (r) * cell_size + cell_size / 2
-                # text_width, text_height = draw.textlength(text, font=font), font.size * r
+                center_x = offset_x + c * cell_size + cell_size / 2
+                center_y = offset_y + r * cell_size + cell_size / 2
+                # Use textbbox to compute the text size.
                 bbox = draw.textbbox((0, 0), text, font=font)
                 text_width = bbox[2] - bbox[0]
                 text_height = bbox[3] - bbox[1]
-                # Use white text for walls (dark background) and black for door/window.
-                text_color = (255, 255, 0) if text == "wall" else (0, 0, 0)
+                text_color = (255, 255, 255) if text == "wall" else (0, 0, 0)
                 draw.text((center_x - text_width / 2, center_y - text_height / 2),
                           text, font=font, fill=text_color)
     
+    # For x axis (columns):
+    for c in range(cols):
+        index_text = str(c)
+        # Compute text dimensions
+        bbox = draw.textbbox((0, 0), index_text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        # Center the text in the top margin for this column.
+        center_x = offset_x + c * cell_size + cell_size / 2
+        # Place the text in the middle of the top margin.
+        x_text = center_x - text_width / 2
+        y_text = (margin - text_height) / 2
+        draw.text((x_text, y_text), index_text, font=font, fill=COLOR_GRID)
+    
+    # For y axis (rows):
+    for r in range(rows):
+        index_text = str(r)
+        bbox = draw.textbbox((0, 0), index_text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        # Center the text in the left margin for this row.
+        center_y = offset_y + r * cell_size + cell_size / 2
+        x_text = (margin - text_width) / 2
+        y_text = center_y - text_height / 2
+        draw.text((x_text, y_text), index_text, font=font, fill=COLOR_GRID)
+
     # Save the resulting image
     image.save(filename, "PNG")
 
@@ -272,7 +299,8 @@ async def generate_design(room_spec: RoomSpec):
             room_dimensions=(num_rows, num_cols),
             scene_image='images/case2.png',
             constraints=constraints,
-            requirement=room_spec.description
+            requirement=room_spec.description,
+            verbose=True
         )
         
         designer.run()

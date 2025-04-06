@@ -1,6 +1,6 @@
 import { RoomSpec } from '../types';
 
-interface DesignItem {
+export interface DesignItem {
   object: string;
   start: [number, number];
   end: [number, number];
