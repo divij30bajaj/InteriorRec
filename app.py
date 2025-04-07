@@ -234,8 +234,8 @@ def create_room_grid_image(room_spec: RoomSpec, filename: str) -> None:
 async def generate_design(room_spec: RoomSpec):
     try:
         # Convert room dimensions to grid dimensions (1 foot = 1 cell)
-        num_rows = int(room_spec.length)
-        num_cols = int(room_spec.width)
+        num_rows = int(room_spec.width)
+        num_cols = int(room_spec.length)
         
         # Create the room image with constraints
         create_room_grid_image(room_spec, 'images/case2.png')
@@ -251,17 +251,17 @@ async def generate_design(room_spec: RoomSpec):
             
             # Convert wall position to grid coordinates
             if wall == 'north':
-                start = (0, int(position * num_cols))
-                end = (0, min(num_cols - 1, int((position + width/room_spec.width) * num_cols)))
+                start = (0, int(position * num_cols - width/2))
+                end = (0, min(num_cols - 1, int((position + width/room_spec.length) * num_cols - width/2)))
             elif wall == 'south':
-                start = (num_rows - 1, int(position * num_cols))
-                end = (num_rows - 1, min(num_cols - 1, int((position + width/room_spec.width) * num_cols)))
+                start = (num_rows - 1, int(position * num_cols - width/2))
+                end = (num_rows - 1, min(num_cols - 1, int((position + width/room_spec.length) * num_cols - width/2)))
             elif wall == 'east':
-                start = (int(position * num_rows), num_cols - 1)
-                end = (min(num_rows - 1, int((position + width/room_spec.length) * num_rows)), num_cols - 1)
+                start = (int(position * num_rows - width/2), num_cols - 1)
+                end = (min(num_rows - 1, int((position + width/room_spec.width) * num_rows - width/2)), num_cols - 1)
             else:  # west
-                start = (int(position * num_rows), 0)
-                end = (min(num_rows - 1, int((position + width/room_spec.length) * num_rows)), 0)
+                start = (int(position * num_rows - width/2), 0)
+                end = (min(num_rows - 1, int((position + width/room_spec.width) * num_rows - width/2)), 0)
             
             constraints.append({
                 "object": "Door",
@@ -276,17 +276,17 @@ async def generate_design(room_spec: RoomSpec):
             width = window.width
             
             if wall == 'north':
-                start = (0, int(position * num_cols))
-                end = (0, min(num_cols - 1, int((position + width/room_spec.width) * num_cols)))
+                start = (0, int(position * num_cols - width/2))
+                end = (0, min(num_cols - 1, int((position + width/room_spec.length) * num_cols - width/2)))
             elif wall == 'south':
-                start = (num_rows - 1, int(position * num_cols))
-                end = (num_rows - 1, min(num_cols - 1, int((position + width/room_spec.width) * num_cols)))
+                start = (num_rows - 1, int(position * num_cols - width/2))
+                end = (num_rows - 1, min(num_cols - 1, int((position + width/room_spec.length) * num_cols - width/2)))
             elif wall == 'east':
-                start = (int(position * num_rows), num_cols - 1)
-                end = (min(num_rows - 1, int((position + width/room_spec.length) * num_rows)), num_cols - 1)
+                start = (int(position * num_rows - width/2), num_cols - 1)
+                end = (min(num_rows - 1, int((position + width/room_spec.width) * num_rows - width/2)), num_cols - 1)
             else:  # west
-                start = (int(position * num_rows), 0)
-                end = (min(num_rows - 1, int((position + width/room_spec.length) * num_rows)), 0)
+                start = (int(position * num_rows - width/2), 0)
+                end = (min(num_rows - 1, int((position + width/room_spec.width) * num_rows - width/2)), 0)
             
             constraints.append({
                 "object": "Window",

@@ -36,8 +36,8 @@ class Designer:
     def place_object(self, box, name, image_path, output_path):
         image = mpimg.imread(image_path)
 
-        cell_col = image.shape[0] // (self.num_cols+1)
-        cell_row = image.shape[1] // (self.num_rows+1)
+        cell_col = image.shape[1] // (self.num_cols+1)
+        cell_row = image.shape[0] // (self.num_rows+1)
 
         bbox = ( (box[0]+1) * cell_col , (box[1]+1) * cell_row , (box[2] - box[0] ) * cell_col, (box[3] - box[1]) * cell_row )
         
@@ -91,6 +91,71 @@ class Designer:
 
         if self.verbose:
             print("list_of_objects:", self.list_of_objects)
+
+    def detect_overlap(self, blocked_regions, placed_region):
+        blocked_cells = []
+        for region in blocked_regions[:-1]:
+            if region.split(":")[0] == "Walls":
+                cells = list(range(self.num_cols)) + \
+                        list(range(0, self.num_cols*self.num_rows, self.num_cols)) + \
+                        list(range(self.num_cols-1, self.num_rows*self.num_cols, self.num_cols)) + \
+                        list(range((self.num_rows-1)*self.num_cols, self.num_cols*self.num_rows))
+                cells = list(set(cells))
+                blocked_cells.extend(cells)
+                continue
+            row, col = region.split(",")[0].split(":")[1].strip(), region.split(",")[1].strip()
+            row_tokens, col_tokens = row.split(), col.split()
+            if len(row_tokens) == 4:
+                row_start = int(row_tokens[1])
+                row_end = int(row_tokens[3])
+            else:
+                row_start = int(row_tokens[1])
+                row_end = row_start + 1
+
+            if len(col_tokens) == 4:
+                col_start = int(col_tokens[1])
+                col_end = int(col_tokens[3])
+            else:
+                col_start = int(col_tokens[1])
+                col_end = col_start + 1
+
+            object_cells = []
+            for row in range(row_start, row_end):
+                cell_start = row*self.num_cols + col_start
+                cell_end = row*self.num_cols + col_end
+                cells = list(range(cell_start, cell_end))
+                object_cells.extend(cells)
+
+            blocked_cells.extend(object_cells)
+
+        placed_col_start, placed_row_start, placed_col_end, placed_row_end = placed_region
+        object_cells = []
+        for row in range(placed_row_start, placed_row_end):
+            cell_start = row * self.num_cols + placed_col_start
+            cell_end = row * self.num_cols + placed_col_end
+            cells = list(range(cell_start, cell_end))
+            object_cells.extend(cells)
+
+        return len(set(blocked_cells).intersection(set(object_cells))) > 0
+
+    def run_rule_based_critic(self, name, blocked_cells, item_id, length, width):
+        critic_prompt = f"""The current placement of the {name} (shown in green) overlaps with one or more of the 
+        blocked cells. Give another set of cells and orientation for the green block in the below format:\nGRID: <Start row number>, <Start column number>\nORIENTATION: 
+        <Orientation of the {name}>."""
+        critic_response = self.model.query(critic_prompt, self.intermediate_image)
+        if self.verbose:
+            print("critic_response:", critic_response)
+        start_row, start_col, orientation = extract_info(critic_response)
+        end_col, end_row = (start_col + width, start_row + length) if orientation.lower() == "vertical" else (
+        start_col + length, start_row + width)
+
+        row_str = f"Rows {start_row} to {end_row}" if start_row != end_row else f"Rows {start_row}"
+        col_str = f"Columns {start_col} to {end_col}" if start_col != end_col else f"Columns {start_col}"
+        blocked_cells.append(f"{name}: {row_str}, {col_str}")
+
+        self.design.append(
+            {"object": name, "start": (start_row, start_col), "end": (end_row, end_col), "item_id": item_id})
+        return start_col, start_row, end_col, end_row
 
     def run_critic(self, name, image_path, item_id, length, width):
         critic_prompt = f"""You are an seasoned interior designer who corrects the placement of the furniture. 
@@ -153,9 +218,22 @@ class Designer:
             col_str = f"Columns {start_col} to {end_col}" if start_col != end_col else f"Columns {start_col}"
             blocked_cells.append(f"{name}: {row_str}, {col_str}")
 
-            self.place_object((start_col, start_row, end_col, end_row), name, image_path, self.intermediate_image)
+            box = (start_col, start_row, end_col, end_row)
+            self.place_object(box, name, image_path, self.intermediate_image)
 
-            self.run_critic(name, image_path, retrieved_object["item_id"], length, width)
+            is_overlapping = self.detect_overlap(blocked_cells, box)
+
+            num_attempts = 0
+            while num_attempts < 3 and is_overlapping:
+                print("Attempt {} - Overlapping object detected!\nBlocked cells: {}\nPlaced cells: {}".format(num_attempts+1, blocked_cells, box))
+                blocked_cells.pop()
+                box = self.run_rule_based_critic(name, blocked_cells, retrieved_object["item_id"], length, width)
+                is_overlapping = self.detect_overlap(blocked_cells, box)
+                num_attempts += 1
+
+                self.place_object(box, name, image_path, self.intermediate_image)
+            self.place_object(box, name, image_path, self.final_image)
+            # self.run_critic(name, image_path, retrieved_object["item_id"], length, width)
 
     def write_to_json(self):
         if os.path.exists('results/design.json'):

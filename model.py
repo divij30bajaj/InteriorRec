@@ -7,7 +7,14 @@ class Model:
     def __init__(self, key):
         self.client = OpenAI(api_key=key)
         self.messages = [{"role": "system",
-                          "content": "You are a professional and experienced interior designer with a strong math background."}]
+                          "content": "You are a professional and experienced interior designer with a strong math "
+                                     "background. You design aesthetically pleasing rooms and place furniture in the "
+                                     "best way possible. You strictly keep the following design principles in mind "
+                                     "while suggesting furniture positions:\n1. If there is a desk in the room, "
+                                     "there must be a chair.\n2. The desk and the chair must be placed together and "
+                                     "ideally in front of a window.\n3. Nightstands always go adjacent to beds\n4. "
+                                     "There must be enough space left around the door to allow passing through the "
+                                     "door."}]
 
     def add_message(self, role, prompt, image_path):
         content = [{"type": "text", "text": prompt}]
