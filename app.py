@@ -5,7 +5,8 @@ import sys
 import traceback
 from typing import List, Tuple
 
-from fastapi import FastAPI, HTTPException
+import requests
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
@@ -315,3 +316,25 @@ async def generate_design(room_spec: RoomSpec):
         print(e)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/s3-proxy/{item_id}")
+async def s3_proxy(item_id: str):
+    """
+    Proxy endpoint to fetch 3D models from S3 bucket and handle CORS.
+    """
+    s3_url = f"https://interior-data.s3.amazonaws.com/{item_id}.glb"
+    try:
+        response = requests.get(s3_url)
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to fetch model from S3")
+        
+        # Return the content with appropriate headers
+        return Response(
+            content=response.content,
+            media_type="model/gltf-binary",
+            headers={
+                "Content-Disposition": f"attachment; filename={item_id}.glb"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching model: {str(e)}")

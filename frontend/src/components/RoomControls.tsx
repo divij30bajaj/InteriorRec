@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { DoorWindow } from '../types';
+import { DesignItem } from '../services/designService';
 
 interface RoomControlsProps {
   roomLength: number;
@@ -15,6 +16,7 @@ interface RoomControlsProps {
   onSubmit: () => void;
   description: string;
   onDescriptionChange: (description: string) => void;
+  selectedFurniture: DesignItem | null;
 }
 
 const RoomControls = ({
@@ -30,7 +32,8 @@ const RoomControls = ({
   onRemoveWindow,
   onSubmit,
   description,
-  onDescriptionChange
+  onDescriptionChange,
+  selectedFurniture
 }: RoomControlsProps) => {
   const [newDoor, setNewDoor] = useState<DoorWindow>({
     wall: 'north',
@@ -60,6 +63,19 @@ const RoomControls = ({
 
   return (
     <div className="room-controls">
+      {/* Selected Furniture Details */}
+      {selectedFurniture && (
+        <div className="control-section">
+          <h3>Selected Furniture</h3>
+          <div className="furniture-details">
+            <p><strong>Item ID:</strong> {selectedFurniture.item_id}</p>
+            <p><strong>Object Type:</strong> {selectedFurniture.object}</p>
+            <p><strong>Position:</strong> ({selectedFurniture.start[0].toFixed(1)}, {selectedFurniture.start[1].toFixed(1)})</p>
+            <p><strong>Size:</strong> {Math.abs(selectedFurniture.end[0] - selectedFurniture.start[0]).toFixed(1)} x {Math.abs(selectedFurniture.end[1] - selectedFurniture.start[1]).toFixed(1)}</p>
+          </div>
+        </div>
+      )}
+
       <div className="control-section">
         <h3>Room Dimensions</h3>
         <div className="control-group">
