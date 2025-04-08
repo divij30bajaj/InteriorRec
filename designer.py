@@ -152,7 +152,7 @@ class Designer:
         row_str = f"Rows {start_row} to {end_row}" if start_row != end_row else f"Rows {start_row}"
         col_str = f"Columns {start_col} to {end_col}" if start_col != end_col else f"Columns {start_col}"
         blocked_cells.append(f"{name}: {row_str}, {col_str}")
-
+        self.design.pop()
         self.design.append(
             {"object": name, "start": (start_row, start_col), "end": (end_row, end_col), "item_id": item_id})
         return start_col, start_row, end_col, end_row
@@ -224,6 +224,7 @@ class Designer:
             is_overlapping = self.detect_overlap(blocked_cells, box)
 
             num_attempts = 0
+            self.design.append({"object": name, "start": (start_row, start_col), "end": (end_row, end_col), "item_id": retrieved_object["item_id"]})
             while num_attempts < 3 and is_overlapping:
                 print("Attempt {} - Overlapping object detected!\nBlocked cells: {}\nPlaced cells: {}".format(num_attempts+1, blocked_cells, box))
                 blocked_cells.pop()

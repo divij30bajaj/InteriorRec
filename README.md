@@ -18,5 +18,11 @@
 
 ### TODO:
 - Convert input room image to grid, and extract grid size and door/window cell positions --DONE
-- Try multiple agents
+- Try multiple agents -- DONE
 - Account for the recommended orientation of the object
+- Add objects to S3
+- Generate color of each object
+- Add colour to 3D models
+- Search (Boolean)
+- Integrate all components
+- Complete UI (drag, select and chat window)
