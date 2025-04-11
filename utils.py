@@ -1,4 +1,6 @@
 import base64
+from io import BytesIO
+from typing import Union
 
 from constant import ITEM_DESCRIPTIONS
 
@@ -28,6 +30,21 @@ def extract_info(response):
     return grid_numbers[0], grid_numbers[1], orientation
 
 
-def encode_image(image_path):
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
+def encode_image(image_path_or_io: Union[str, BytesIO]):
+    """
+    Encode an image to base64 string.
+    
+    Args:
+        image_path_or_io: Either a file path or a BytesIO object containing the image
+        
+    Returns:
+        A base64 encoded string of the image
+    """
+    if isinstance(image_path_or_io, BytesIO):
+        # If it's a BytesIO object, read from it directly
+        image_path_or_io.seek(0)
+        return base64.b64encode(image_path_or_io.read()).decode('utf-8')
+    else:
+        # If it's a file path, open and read the file
+        with open(image_path_or_io, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')

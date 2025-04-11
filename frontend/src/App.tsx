@@ -16,10 +16,11 @@ function App() {
   const [roomWidth, setRoomWidth] = useState(13)   // ~4m in feet
   const [doors, setDoors] = useState<DoorWindow[]>([])
   const [windows, setWindows] = useState<DoorWindow[]>([])
-  const [description, setDescription] = useState('')
+  const [roomType, setRoomType] = useState<'livingRoom' | 'bedroom' | 'diningRoom'>('livingRoom')
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
   const [design, setDesign] = useState<RoomDesign | undefined>(undefined)
+  const [designOptions, setDesignOptions] = useState<RoomDesign[] | undefined>(undefined)
   const [selectedFurniture, setSelectedFurniture] = useState<DesignItem | null>(null)
 
   const handleAddDoor = (door: DoorWindow) => {
@@ -71,27 +72,53 @@ function App() {
     }
   }
 
+  const handleUnselectFurniture = () => {
+    setSelectedFurniture(null);
+  };
+
+  const handleSelectDesign = (index: number) => {
+    if (designOptions && designOptions.length > index) {
+      setDesign(designOptions[index]);
+      setDesignOptions(undefined); // Clear options once a design is selected
+      setResult({
+        success: true,
+        message: 'Design selected successfully.'
+      });
+    }
+  };
+
   const handleSubmit = useCallback(async () => {
-    // Prepare the data to send to the backend
-    const roomSpec: RoomSpec = {
+    // Prepare the base data to send to the backend
+    const baseRoomSpec: RoomSpec = {
       length: roomLength,
       width: roomWidth,
       doors,
       windows,
-      description
+      roomType
     }
 
     setIsLoading(true)
     setDesign(undefined)
+    setDesignOptions(undefined)
     setSelectedFurniture(null)
     
     try {
-      const generatedDesign = await generateRoomDesign(roomSpec)
-      setDesign(generatedDesign)
+      // Generate designs for different styles
+      const promises = ['minimal', 'mid-century', 'modern'].map(async (style) => {
+        const roomSpec = {
+          ...baseRoomSpec, 
+          style: style as 'minimal' | 'mid-century' | 'modern'
+        };
+        return await generateRoomDesign(roomSpec);
+      });
+      
+      const generatedDesigns = await Promise.all(promises);
+      setDesignOptions(generatedDesigns);
+      
       setResult({
         success: true,
-        message: 'Successfully generated interior design recommendations.'
-      })
+        message: 'Successfully generated design options. Please select a style.'
+      });
     } catch (error) {
       console.error('Error generating recommendations:', error)
       setResult({
@@ -101,7 +128,7 @@ function App() {
     } finally {
       setIsLoading(false)
     }
-  }, [roomLength, roomWidth, doors, windows, description])
+  }, [roomLength, roomWidth, doors, windows, roomType])
 
   return (
     <div className="app">
@@ -138,9 +165,14 @@ function App() {
               onRemoveDoor={handleRemoveDoor}
               onRemoveWindow={handleRemoveWindow}
               onSubmit={handleSubmit}
-              description={description}
-              onDescriptionChange={setDescription}
+              roomType={roomType}
+              onRoomTypeChange={setRoomType}
               selectedFurniture={selectedFurniture}
+              onFurniturePositionChange={handleFurniturePositionChange}
+              design={design}
+              onUnselectFurniture={handleUnselectFurniture}
+              designOptions={designOptions}
+              onSelectDesign={handleSelectDesign}
             />
           </div>
         </div>

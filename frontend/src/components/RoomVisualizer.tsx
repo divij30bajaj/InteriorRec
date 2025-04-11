@@ -54,19 +54,6 @@ const Compass = () => {
   );
 };
 
-// Custom component to control orbit controls
-const ControlsManager = ({ isDragging }: { isDragging: boolean }) => {
-  const { controls } = useThree();
-  
-  useEffect(() => {
-    if (controls && 'enabled' in controls) {
-      controls.enabled = !isDragging;
-    }
-  }, [controls, isDragging]);
-  
-  return null;
-};
-
 const Room = ({ 
   roomLength, 
   roomWidth, 
@@ -83,7 +70,6 @@ const Room = ({
   const halfWidth = roomWidth / 2;
   const wallHeight = 8; // Standard ceiling height in feet
   const wallThickness = 0.5; // Wall thickness in feet
-  const [isDragging, setIsDragging] = useState(false);
 
   // Convert grid position to world position
   const gridToWorld = (gridX: number, gridY: number): [number, number, number] => {
@@ -94,34 +80,13 @@ const Room = ({
     return [x, 0, z];
   };
 
-  // Handle background click to clear selection
-  const handleBackgroundClick = () => {
-    if (onFurnitureSelect && !isDragging) {
-      onFurnitureSelect(null);
-    }
-  };
-
   return (
     <group>
-      <ControlsManager isDragging={isDragging} />
-      
-      {/* Background plane for handling clicks to clear selection */}
-      <Plane 
-        args={[roomLength * 3, roomWidth * 3]} 
-        rotation={[-Math.PI / 2, 0, 0]} 
-        position={[0, -0.01, 0]}
-        onClick={handleBackgroundClick}
-        visible={false}
-      >
-        <meshBasicMaterial transparent opacity={0} />
-      </Plane>
-
       {/* Floor */}
       <Plane 
         args={[roomLength, roomWidth]} 
         rotation={[-Math.PI / 2, 0, 0]} 
         position={[0, 0, 0]}
-        onClick={handleBackgroundClick}
       >
         <meshStandardMaterial color="#f0f0f0" />
       </Plane>
@@ -201,8 +166,6 @@ const Room = ({
             scale={3}
             isSelected={selectedFurniture?.item_id === item.item_id}
             onSelect={() => onFurnitureSelect?.(item)}
-            onPositionChange={(newPosition) => onFurniturePositionChange?.(item.item_id, newPosition)}
-            onDragStateChange={setIsDragging}
           />
         );
       })}

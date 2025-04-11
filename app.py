@@ -1,15 +1,20 @@
+import asyncio
 import json
 import math
 import os
 import sys
 import traceback
+from io import BytesIO
 from typing import List, Tuple
 
 import requests
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from openai import RateLimitError
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
+
+import retriever
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,7 +34,8 @@ class RoomSpec(BaseModel):
     width: float   # in feet
     doors: List[DoorWindow]
     windows: List[DoorWindow]
-    description: str
+    roomType: str
+    style: str
 
 class DesignItem(BaseModel):
     object: str
@@ -39,6 +45,10 @@ class DesignItem(BaseModel):
 
 class DesignResponse(BaseModel):
     items: List[DesignItem]
+
+class SimilarItem(BaseModel):
+    item_id: str
+    description: str
 
 app = FastAPI()
 
@@ -51,9 +61,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def create_room_grid_image(room_spec: RoomSpec, filename: str) -> None:
+def create_room_grid_image(room_spec: RoomSpec) -> BytesIO:
     """
-    Creates and saves a grid image (PNG) of the room specified by `room_spec` with labels.
+    Creates a grid image of the room specified by `room_spec` with labels.
+    Returns a BytesIO object containing the image data.
     
     Color legend:
       - Walls (outer boundary): Gray with label "wall"
@@ -228,8 +239,11 @@ def create_room_grid_image(room_spec: RoomSpec, filename: str) -> None:
         y_text = center_y - text_height / 2
         draw.text((x_text, y_text), index_text, font=font, fill=COLOR_GRID)
 
-    # Save the resulting image
-    image.save(filename, "PNG")
+    # Save to BytesIO instead of file
+    img_io = BytesIO()
+    image.save(img_io, format='PNG')
+    img_io.seek(0)
+    return img_io
 
 @app.post("/generate-design", response_model=DesignResponse)
 async def generate_design(room_spec: RoomSpec):
@@ -239,7 +253,7 @@ async def generate_design(room_spec: RoomSpec):
         num_cols = int(room_spec.length)
         
         # Create the room image with constraints
-        create_room_grid_image(room_spec, 'images/case2.png')
+        img_io = create_room_grid_image(room_spec)
         
         # Convert door and window positions to grid constraints
         constraints = []
@@ -298,20 +312,36 @@ async def generate_design(room_spec: RoomSpec):
         # Initialize and run the designer
         designer = Designer(
             room_dimensions=(num_rows, num_cols),
-            scene_image='images/case2.png',
+            scene_image=img_io,
             constraints=constraints,
-            requirement=room_spec.description,
+            requirement=room_spec.roomType,
             verbose=True
         )
         
-        designer.run()
-        
-        # Read the generated design
-        with open('results/design.json', 'r') as f:
-            design = json.load(f)
+        design = await designer.run_with_style(room_spec.style)
         
         return {"items": design}
 
+    except RateLimitError as e:
+        print(f"Rate limit reached: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached. Please try again later.")
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/get-similar-items", response_model=List[SimilarItem])
+async def get_similar_items(item_id: str):
+    """
+    Get similar items from the database.
+    """
+    try:
+        return await retriever.get_similar_items(item_id)
+    except RateLimitError as e:
+        print(f"Rate limit reached: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached. Please try again later.")
     except Exception as e:
         print(e)
         traceback.print_exc()
@@ -324,7 +354,7 @@ async def s3_proxy(item_id: str):
     """
     s3_url = f"https://interior-data.s3.amazonaws.com/{item_id}.glb"
     try:
-        response = requests.get(s3_url)
+        response = await asyncio.to_thread(requests.get, s3_url)
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail="Failed to fetch model from S3")
         
@@ -338,3 +368,32 @@ async def s3_proxy(item_id: str):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching model: {str(e)}")
+
+@app.get("/s3-proxy/{item_id}/thumbnail")
+async def s3_proxy_thumbnail(item_id: str):
+    """
+    Proxy endpoint to fetch thumbnail images for 3D models from S3 bucket and handle CORS.
+    """
+    # Try to get thumbnail from S3 with different extensions
+    extensions = ['jpg', 'png', 'jpeg']
+    
+    for ext in extensions:
+        s3_url = f"https://interior-data.s3.amazonaws.com/thumbnails/{item_id}.{ext}"
+        try:
+            response = await asyncio.to_thread(requests.get, s3_url)
+            if response.status_code == 200:
+                # Determine content type based on extension
+                content_type = f"image/{ext}"
+                if ext == 'jpg':
+                    content_type = "image/jpeg"
+                
+                # Return the content with appropriate headers
+                return Response(
+                    content=response.content,
+                    media_type=content_type
+                )
+        except Exception:
+            continue
+    
+    # If no thumbnail found with any extension, return a 404
+    raise HTTPException(status_code=404, detail="Thumbnail not found")

@@ -68,3 +68,81 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Similar Items Styling */
+.similar-items-list {
+  margin-top: 15px;
+}
+
+.similar-items-list ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.furniture-details {
+  margin-bottom: 10px;
+}
+
+.similar-item {
+  display: flex;
+  align-items: center;
+  background-color: #f1f3f5;
+  border-radius: 8px;
+  padding: 10px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.similar-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.thumbnail-container {
+  flex: 0 0 80px;
+  height: 80px;
+  margin-right: 15px;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #e9ecef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.item-thumbnail {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.model-thumbnail {
+  width: 100%;
+  height: 100%;
+}
+
+.thumbnail-loading,
+.thumbnail-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: #6c757d;
+  background-color: #e9ecef;
+  text-align: center;
+  padding: 5px;
+}
+
+.item-info {
+  flex: 1;
+}
+
+.item-info li {
+  font-size: 0.9rem;
+  color: #495057;
+}

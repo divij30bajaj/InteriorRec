@@ -26,3 +26,13 @@
 - Search (Boolean)
 - Integrate all components
 - Complete UI (drag, select and chat window)
+
+- Global 1: given current scene and clicked object, suggest this object to replace
+- Global 2: goes with it: given a new object replaced and current scene, suggest new objects and their placements. 
+  - move object
+- Local 1: -- DONE, retrieve similar object
+
+
+### additional items:
+- add items
+- painings, plants, ceiling lights, etc.

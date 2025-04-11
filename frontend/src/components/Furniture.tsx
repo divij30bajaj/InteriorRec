@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { useLoader, useFrame, ThreeEvent } from '@react-three/fiber';
+import { useLoader } from '@react-three/fiber';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
@@ -12,8 +12,6 @@ interface FurnitureProps {
   scale?: number;
   isSelected?: boolean;
   onSelect?: () => void;
-  onPositionChange?: (position: [number, number, number]) => void;
-  onDragStateChange?: (isDragging: boolean) => void;
 }
 
 const Furniture = ({ 
@@ -21,16 +19,11 @@ const Furniture = ({
   position, 
   scale = 1, 
   isSelected = false,
-  onSelect,
-  onPositionChange,
-  onDragStateChange
+  onSelect
 }: FurnitureProps) => {
   const [error, setError] = useState(false);
   const groupRef = useRef<THREE.Group>(null);
-  const isDragging = useRef(false);
-  const originalPosition = useRef(position);
-  const [furniturePosition, setFurniturePosition] = useState(position);
-
+  
   // Generate proxy URL for the model
   const modelUrl = `http://127.0.0.1:5000/s3-proxy/${item.item_id}`;
 
@@ -61,75 +54,11 @@ const Furniture = ({
     }
   }, [gltf, item.item_id]);
 
-  useEffect(() => {
-    // Update position when the prop changes, but not during dragging
-    if (!isDragging.current) {
-      setFurniturePosition(position);
-      originalPosition.current = position;
-    }
-  }, [position]);
-
-  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
-    if (isSelected) {
-      e.stopPropagation();
-      isDragging.current = true;
-      if (onDragStateChange) {
-        onDragStateChange(true);
-      }
-    } else if (onSelect) {
-      onSelect();
-    }
-  };
-
-  const handlePointerUp = () => {
-    if (isDragging.current) {
-      isDragging.current = false;
-      if (onPositionChange) {
-        onPositionChange(furniturePosition);
-      }
-      if (onDragStateChange) {
-        onDragStateChange(false);
-      }
-    }
-  };
-
-  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
-    if (isSelected && isDragging.current && groupRef.current) {
-      e.stopPropagation();
-      
-      // Get the movement in the plane
-      const movementX = e.movementX * 0.1;
-      const movementY = e.movementY * 0.1;
-      
-      // Update position
-      const newPosition: [number, number, number] = [
-        furniturePosition[0] + movementX,
-        furniturePosition[1],
-        furniturePosition[2] + movementY
-      ];
-      
-      setFurniturePosition(newPosition);
-    }
-  };
-
-  useFrame(() => {
-    if (groupRef.current) {
-      // Update the position on the ThreeJS object directly
-      groupRef.current.position.set(
-        furniturePosition[0],
-        furniturePosition[1],
-        furniturePosition[2]
-      );
-    }
-  });
-
   return (
     <group 
       ref={groupRef}
-      onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerUp}
-      onPointerMove={handlePointerMove}
-      position={furniturePosition}
+      onClick={onSelect}
+      position={position}
       scale={[scale, scale, scale]}
     >
       {error ? (
