@@ -131,22 +131,13 @@ class SimpleRetrieval:
             self.index = {k: set(v) for k, v in data['index'].items()}
             self.items = data['items']
     
-    def boolean_query(self, query: str) -> Set[str]:
-        """
-        Process a boolean query and return matching item_ids
-        Query format: word1 AND word2 OR word3 AND word4
-        """
-        # Convert query to lowercase
-        query = query.lower()
-        
-        # Split query into terms
-        terms = query.split()
-        
+    def _evaluate_expression(self, terms: List[str]) -> Set[str]:
+        """Evaluate a boolean expression without parentheses"""
         if not terms:
             return set()
             
         # Initialize result with first term's items
-        result = self.index.get(terms[0], set())
+        result = self.index.get(terms[0].lower(), set())
         
         i = 1
         while i < len(terms):
@@ -154,7 +145,7 @@ class SimpleRetrieval:
             if i + 1 >= len(terms):
                 break
                 
-            next_term = terms[i + 1]
+            next_term = terms[i + 1].lower()
             next_items = self.index.get(next_term, set())
             
             if operator == 'AND':
@@ -164,6 +155,56 @@ class SimpleRetrieval:
                 
             i += 2
             
+        return result
+    
+    def _process_parentheses(self, query: str) -> str:
+        """Process parentheses in the query and evaluate sub-expressions"""
+        # Find the innermost parentheses
+        while '(' in query:
+            # Find the innermost parentheses
+            start = query.rfind('(')
+            end = query.find(')', start)
+            
+            if start == -1 or end == -1:
+                break
+                
+            # Extract the sub-expression
+            sub_expr = query[start + 1:end]
+            
+            # Evaluate the sub-expression
+            sub_result = self._evaluate_expression(sub_expr.split())
+            
+            # Replace the sub-expression with a temporary token
+            temp_token = f"__TEMP_{len(sub_result)}__"
+            query = query[:start] + temp_token + query[end + 1:]
+            
+            # Store the result
+            self.index[temp_token] = sub_result
+            
+        return query
+    
+    def boolean_query(self, query: str) -> Set[str]:
+        """
+        Process a boolean query with parentheses and return matching item_ids
+        Query format: (word1 AND word2) OR (word3 AND word4)
+        """
+        # Convert query to lowercase and remove extra spaces
+        query = ' '.join(query.lower().split())
+        
+        # Process parentheses
+        query = self._process_parentheses(query)
+        
+        # Split query into terms
+        terms = query.split()
+        
+        # Evaluate the final expression
+        result = self._evaluate_expression(terms)
+        
+        # Clean up temporary tokens
+        for key in list(self.index.keys()):
+            if key.startswith('__TEMP_'):
+                del self.index[key]
+                
         return result
     
     def build_faiss_index(self, embeddings: np.ndarray, item_ids: List[str]):
