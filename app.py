@@ -1,15 +1,24 @@
+import asyncio
 import json
 import math
 import os
 import sys
 import traceback
+
 from typing import List, Tuple, Dict
 
-from fastapi import FastAPI, HTTPException
+from io import BytesIO
+
+
+import requests
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from openai import RateLimitError
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
 import numpy as np
+
+import retriever
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -39,7 +48,8 @@ class RoomSpec(BaseModel):
     width: float   # in feet
     doors: List[DoorWindow]
     windows: List[DoorWindow]
-    description: str
+    roomType: str
+    style: str
 
 class DesignItem(BaseModel):
     object: str
@@ -58,6 +68,11 @@ class RetrievalQuery(BaseModel):
 class RetrievalResponse(BaseModel):
     items: List[Dict[str, float]]
 
+class SimilarItem(BaseModel):
+    item_id: str
+    description: str
+
+
 app = FastAPI()
 
 # Configure CORS
@@ -69,9 +84,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def create_room_grid_image(room_spec: RoomSpec, filename: str) -> None:
+def create_room_grid_image(room_spec: RoomSpec) -> BytesIO:
     """
-    Creates and saves a grid image (PNG) of the room specified by `room_spec` with labels.
+    Creates a grid image of the room specified by `room_spec` with labels.
+    Returns a BytesIO object containing the image data.
     
     Color legend:
       - Walls (outer boundary): Gray with label "wall"
@@ -246,8 +262,11 @@ def create_room_grid_image(room_spec: RoomSpec, filename: str) -> None:
         y_text = center_y - text_height / 2
         draw.text((x_text, y_text), index_text, font=font, fill=COLOR_GRID)
 
-    # Save the resulting image
-    image.save(filename, "PNG")
+    # Save to BytesIO instead of file
+    img_io = BytesIO()
+    image.save(img_io, format='PNG')
+    img_io.seek(0)
+    return img_io
 
 @app.post("/retrieve-items", response_model=RetrievalResponse)
 async def retrieve_items(query: RetrievalQuery):
@@ -276,11 +295,11 @@ async def retrieve_items(query: RetrievalQuery):
 async def generate_design(room_spec: RoomSpec):
     try:
         # Convert room dimensions to grid dimensions (1 foot = 1 cell)
-        num_rows = int(room_spec.length)
-        num_cols = int(room_spec.width)
+        num_rows = int(room_spec.width)
+        num_cols = int(room_spec.length)
         
         # Create the room image with constraints
-        create_room_grid_image(room_spec, 'images/case2.png')
+        img_io = create_room_grid_image(room_spec)
         
         # Convert door and window positions to grid constraints
         constraints = []
@@ -293,17 +312,17 @@ async def generate_design(room_spec: RoomSpec):
             
             # Convert wall position to grid coordinates
             if wall == 'north':
-                start = (0, int(position * num_cols))
-                end = (0, min(num_cols - 1, int((position + width/room_spec.width) * num_cols)))
+                start = (0, int(position * num_cols - width/2))
+                end = (0, min(num_cols - 1, int((position + width/room_spec.length) * num_cols - width/2)))
             elif wall == 'south':
-                start = (num_rows - 1, int(position * num_cols))
-                end = (num_rows - 1, min(num_cols - 1, int((position + width/room_spec.width) * num_cols)))
+                start = (num_rows - 1, int(position * num_cols - width/2))
+                end = (num_rows - 1, min(num_cols - 1, int((position + width/room_spec.length) * num_cols - width/2)))
             elif wall == 'east':
-                start = (int(position * num_rows), num_cols - 1)
-                end = (min(num_rows - 1, int((position + width/room_spec.length) * num_rows)), num_cols - 1)
+                start = (int(position * num_rows - width/2), num_cols - 1)
+                end = (min(num_rows - 1, int((position + width/room_spec.width) * num_rows - width/2)), num_cols - 1)
             else:  # west
-                start = (int(position * num_rows), 0)
-                end = (min(num_rows - 1, int((position + width/room_spec.length) * num_rows)), 0)
+                start = (int(position * num_rows - width/2), 0)
+                end = (min(num_rows - 1, int((position + width/room_spec.width) * num_rows - width/2)), 0)
             
             constraints.append({
                 "object": "Door",
@@ -318,17 +337,17 @@ async def generate_design(room_spec: RoomSpec):
             width = window.width
             
             if wall == 'north':
-                start = (0, int(position * num_cols))
-                end = (0, min(num_cols - 1, int((position + width/room_spec.width) * num_cols)))
+                start = (0, int(position * num_cols - width/2))
+                end = (0, min(num_cols - 1, int((position + width/room_spec.length) * num_cols - width/2)))
             elif wall == 'south':
-                start = (num_rows - 1, int(position * num_cols))
-                end = (num_rows - 1, min(num_cols - 1, int((position + width/room_spec.width) * num_cols)))
+                start = (num_rows - 1, int(position * num_cols - width/2))
+                end = (num_rows - 1, min(num_cols - 1, int((position + width/room_spec.length) * num_cols - width/2)))
             elif wall == 'east':
-                start = (int(position * num_rows), num_cols - 1)
-                end = (min(num_rows - 1, int((position + width/room_spec.length) * num_rows)), num_cols - 1)
+                start = (int(position * num_rows - width/2), num_cols - 1)
+                end = (min(num_rows - 1, int((position + width/room_spec.width) * num_rows - width/2)), num_cols - 1)
             else:  # west
-                start = (int(position * num_rows), 0)
-                end = (min(num_rows - 1, int((position + width/room_spec.length) * num_rows)), 0)
+                start = (int(position * num_rows - width/2), 0)
+                end = (min(num_rows - 1, int((position + width/room_spec.width) * num_rows - width/2)), 0)
             
             constraints.append({
                 "object": "Window",
@@ -339,21 +358,88 @@ async def generate_design(room_spec: RoomSpec):
         # Initialize and run the designer
         designer = Designer(
             room_dimensions=(num_rows, num_cols),
-            scene_image='images/case2.png',
+            scene_image=img_io,
             constraints=constraints,
-            requirement=room_spec.description,
+            requirement=room_spec.roomType,
             verbose=True
         )
         
-        designer.run()
-        
-        # Read the generated design
-        with open('results/design.json', 'r') as f:
-            design = json.load(f)
+        design = await designer.run_with_style(room_spec.style)
         
         return {"items": design}
 
+    except RateLimitError as e:
+        print(f"Rate limit reached: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached. Please try again later.")
     except Exception as e:
         print(e)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/get-similar-items", response_model=List[SimilarItem])
+async def get_similar_items(item_id: str):
+    """
+    Get similar items from the database.
+    """
+    try:
+        return await retriever.get_similar_items(item_id)
+    except RateLimitError as e:
+        print(f"Rate limit reached: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached. Please try again later.")
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/s3-proxy/{item_id}")
+async def s3_proxy(item_id: str):
+    """
+    Proxy endpoint to fetch 3D models from S3 bucket and handle CORS.
+    """
+    s3_url = f"https://interior-data.s3.amazonaws.com/{item_id}.glb"
+    try:
+        response = await asyncio.to_thread(requests.get, s3_url)
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to fetch model from S3")
+        
+        # Return the content with appropriate headers
+        return Response(
+            content=response.content,
+            media_type="model/gltf-binary",
+            headers={
+                "Content-Disposition": f"attachment; filename={item_id}.glb"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching model: {str(e)}")
+
+@app.get("/s3-proxy/{item_id}/thumbnail")
+async def s3_proxy_thumbnail(item_id: str):
+    """
+    Proxy endpoint to fetch thumbnail images for 3D models from S3 bucket and handle CORS.
+    """
+    # Try to get thumbnail from S3 with different extensions
+    extensions = ['jpg', 'png', 'jpeg']
+    
+    for ext in extensions:
+        s3_url = f"https://interior-data.s3.amazonaws.com/thumbnails/{item_id}.{ext}"
+        try:
+            response = await asyncio.to_thread(requests.get, s3_url)
+            if response.status_code == 200:
+                # Determine content type based on extension
+                content_type = f"image/{ext}"
+                if ext == 'jpg':
+                    content_type = "image/jpeg"
+                
+                # Return the content with appropriate headers
+                return Response(
+                    content=response.content,
+                    media_type=content_type
+                )
+        except Exception:
+            continue
+    
+    # If no thumbnail found with any extension, return a 404
+    raise HTTPException(status_code=404, detail="Thumbnail not found")

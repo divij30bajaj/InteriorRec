@@ -10,5 +10,6 @@ export interface RoomSpec {
   width: number;
   doors: DoorWindow[];
   windows: DoorWindow[];
-  description: string;
+  roomType: 'livingRoom' | 'bedroom' | 'diningRoom';
+  style?: 'minimal' | 'mid-century' | 'modern';
 } 

@@ -9,9 +9,10 @@ export interface DesignItem {
 
 export interface RoomDesign {
   items: DesignItem[];
+  style?: 'minimal' | 'mid-century' | 'modern';
 }
 
-const API_URL = 'http://127.0.0.1:5000';
+export const API_URL = 'http://127.0.0.1:5000';
 
 export async function generateRoomDesign(roomSpec: RoomSpec): Promise<RoomDesign> {
   try {
@@ -30,7 +31,8 @@ export async function generateRoomDesign(roomSpec: RoomSpec): Promise<RoomDesign
     }
 
     const design = await response.json();
-    console.log(design)
+    design.style = roomSpec.style;
+    console.log("generated design: ", design);
     return design;
   } catch (error) {
     console.error('Error generating room design:', error);
