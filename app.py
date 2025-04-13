@@ -384,13 +384,13 @@ async def generate_design(room_spec: RoomSpec):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/get-similar-items", response_model=List[SimilarItem])
-async def get_similar_items(item_id: str):
+@app.post("/get-similar-items", response_model=List[SimilarItem])
+async def get_similar_items(item_id: str, liked_items: List[str], disliked_items: List[str]):
     """
     Get similar items from the database.
     """
     try:
-        return await retriever.get_similar_items(item_id)
+        return await retriever.get_similar_items(item_id, liked_items, disliked_items)
     except RateLimitError as e:
         print(f"Rate limit reached: {e}")
         traceback.print_exc()

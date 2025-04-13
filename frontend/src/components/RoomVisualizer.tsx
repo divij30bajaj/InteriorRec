@@ -190,6 +190,7 @@ interface WallProps {
   wall: 'north' | 'east' | 'south' | 'west';
   doors: DoorWindow[];
   windows: DoorWindow[];
+  color: string;
 }
 
 const Wall = ({ length, height, thickness, position, rotation, wall, doors, windows, color }: WallProps) => {

@@ -426,3 +426,61 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+.button-group {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  width: 100%;
+}
+
+.like-button,
+.dislike-button,
+.liked-button,
+.disliked-button {
+  flex: 1;
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.like-button {
+  background-color: #4caf50;
+  color: white;
+}
+
+.like-button:hover {
+  background-color: #43a047;
+}
+
+.dislike-button {
+  background-color: #ff5252;
+  color: white;
+}
+
+.dislike-button:hover {
+  background-color: #d32f2f;
+}
+
+.liked-button {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border: 2px solid #4caf50;
+}
+
+.liked-button:hover {
+  background-color: #c8e6c9;
+}
+
+.disliked-button {
+  background-color: #ffebee;
+  color: #c62828;
+  border: 2px solid #ff5252;
+}
+
+.disliked-button:hover {
+  background-color: #ffcdd2;
+}
