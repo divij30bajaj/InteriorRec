@@ -4,7 +4,7 @@ import { OrbitControls, Box, Plane, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { DoorWindow } from '../types';
 import Furniture from './Furniture';
-import { RoomDesign } from '../services/designService';
+import { RoomDesign, DesignItem } from '../services/designService';
 
 interface RoomVisualizerProps {
   roomLength: number;
@@ -12,6 +12,9 @@ interface RoomVisualizerProps {
   doors: DoorWindow[];
   windows: DoorWindow[];
   design?: RoomDesign;
+  onFurnitureSelect?: (item: DesignItem | null) => void;
+  selectedFurniture?: DesignItem | null;
+  onFurniturePositionChange?: (itemId: string, position: [number, number, number]) => void;
 }
 
 // Compass component to show North direction
@@ -51,7 +54,17 @@ const Compass = () => {
   );
 };
 
-const Room = ({ roomLength, roomWidth, doors, windows, showWalls = true, design }: RoomVisualizerProps & { showWalls?: boolean }) => {
+const Room = ({ 
+  roomLength, 
+  roomWidth, 
+  doors, 
+  windows, 
+  showWalls = true, 
+  design,
+  onFurnitureSelect,
+  selectedFurniture,
+  onFurniturePositionChange
+}: RoomVisualizerProps & { showWalls?: boolean }) => {
   // Convert room dimensions from feet to Three.js units (1:1 scale)
   const halfLength = roomLength / 2;
   const halfWidth = roomWidth / 2;
@@ -145,13 +158,14 @@ const Room = ({ roomLength, roomWidth, doors, windows, showWalls = true, design 
       {/* Add furniture */}
       {design?.items.map((item, index) => {
         const position = gridToWorld((item.start[1]+item.end[1])/2, (item.start[0]+item.end[0])/2);
-        console.log(item,index, position);
         return (
           <Furniture
             key={`furniture-${index}`}
             item={item}
             position={position}
-            scale={3} // Convert inches to meters
+            scale={3}
+            isSelected={selectedFurniture?.item_id === item.item_id}
+            onSelect={() => onFurnitureSelect?.(item)}
           />
         );
       })}
@@ -209,7 +223,16 @@ const Wall = ({ length, height, thickness, position, rotation, wall, doors, wind
   );
 };
 
-const RoomVisualizer = ({ roomLength, roomWidth, doors, windows, design }: RoomVisualizerProps) => {
+const RoomVisualizer = ({ 
+  roomLength, 
+  roomWidth, 
+  doors, 
+  windows, 
+  design,
+  onFurnitureSelect,
+  selectedFurniture,
+  onFurniturePositionChange
+}: RoomVisualizerProps) => {
   const [showWalls, setShowWalls] = useState(true);
 
   return (
@@ -230,6 +253,9 @@ const RoomVisualizer = ({ roomLength, roomWidth, doors, windows, design }: RoomV
           windows={windows}
           showWalls={showWalls}
           design={design}
+          onFurnitureSelect={onFurnitureSelect}
+          selectedFurniture={selectedFurniture}
+          onFurniturePositionChange={onFurniturePositionChange}
         />
         <OrbitControls makeDefault />
         <gridHelper args={[30, 30, `white`, `gray`]} />
