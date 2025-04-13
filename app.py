@@ -4,8 +4,11 @@ import math
 import os
 import sys
 import traceback
+
+from typing import List, Tuple, Dict
+
 from io import BytesIO
-from typing import List, Tuple
+
 
 import requests
 from fastapi import FastAPI, HTTPException, Response
@@ -13,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from openai import RateLimitError
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
+import numpy as np
 
 import retriever
 
@@ -20,7 +24,17 @@ import retriever
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from designer import Designer
+from simple_retrieval import SimpleRetrieval
 
+# Initialize retrieval system
+retrieval_system = SimpleRetrieval()
+try:
+    retrieval_system.load_index()
+    retrieval_system.load_faiss_index()
+    print("Retrieval system initialized successfully")
+except FileNotFoundError as e:
+    print(f"Warning: {e}")
+    print("Please run simple_retrieval.py first to create the necessary index files")
 
 # Pydantic models for request validation
 class DoorWindow(BaseModel):
@@ -46,9 +60,18 @@ class DesignItem(BaseModel):
 class DesignResponse(BaseModel):
     items: List[DesignItem]
 
+class RetrievalQuery(BaseModel):
+    boolean_query: str
+    query_embedding: List[float]
+    k: int = 10
+
+class RetrievalResponse(BaseModel):
+    items: List[Dict[str, float]]
+
 class SimilarItem(BaseModel):
     item_id: str
     description: str
+
 
 app = FastAPI()
 
@@ -244,6 +267,29 @@ def create_room_grid_image(room_spec: RoomSpec) -> BytesIO:
     image.save(img_io, format='PNG')
     img_io.seek(0)
     return img_io
+
+@app.post("/retrieve-items", response_model=RetrievalResponse)
+async def retrieve_items(query: RetrievalQuery):
+    try:
+        # Convert query embedding to numpy array
+        query_embedding = np.array(query.query_embedding)
+        
+        # Get results using boolean query and similarity
+        results = retrieval_system.retrieve_with_boolean_and_similarity(
+            query.boolean_query,
+            query_embedding,
+            k=query.k
+        )
+        
+        # Format results
+        items = [{"item_id": item_id, "score": score} for item_id, score in results]
+        
+        return {"items": items}
+        
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/generate-design", response_model=DesignResponse)
 async def generate_design(room_spec: RoomSpec):
