@@ -1,10 +1,12 @@
 import json
 import numpy as np
 import faiss
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Optional
 import re
 import os
 import argparse
+from openai import RateLimitError
+import asyncio
 
 class SimpleRetrieval:
     def __init__(self, index_file: str = 'inverse_index.json', embeddings_file: str = 'embeddings.npy'):
@@ -16,6 +18,123 @@ class SimpleRetrieval:
         self.item_ids = []
         self.embeddings = None
         
+    async def process_query(self, query_object: Dict[str, str]) -> Tuple[str, str]:
+        """Process the query object and generate boolean query and description"""
+        try:
+            prompt = f"""
+            You are an AI assistant that generates **Boolean search queries** and **object descriptions** for furniture items based on user requests. Given a user's natural language input and structured product data, your task is to:
+
+            ### 1. **Generate a Boolean Search Query**  
+            Create a search query using logical operators (**AND**, **OR**, **NOT**) to filter items based on single-word indexes.
+
+            - Use **AND** to connect core attributes such as furniture type, room, material, or style.
+            - Use **OR** for synonyms or alternative preferences.
+            - Use **NOT** to exclude attributes the user explicitly does not want.
+            - Only include **single-word tokens** (no phrases or descriptive language).
+            - Keep the query flexible and relevant to the user's intent.
+
+            ### 2. **Generate an Object Description**  
+            Create a detailed object description that will be used for **ranking** and **presentation**. This should:
+
+            - Reflect **user preferences**, including implicit ones.
+            - Enrich the description with available structured data:  
+              - `"material"`  
+              - `"color"`  
+              - `"style"`  
+              - `"item_keywords"`  
+              - `"description"`  
+            - Include specific shape, material, room context, design style, exclusions, and other ranking-relevant keywords—even if not explicitly mentioned by the user.
+
+            ### User Input:
+            User Conversation: {query_object['user_conversation']}
+            Material: {query_object['material']}
+            Style: {query_object['style']}
+            Key Items: {query_object['key_items']}
+            Keywords: {query_object['keywords']}
+
+            Please provide:
+            1. A Boolean search query using AND, OR, NOT operators
+            2. A detailed object description for ranking
+            """
+
+            # Call OpenAI API to generate the query and description
+            response = await openai.ChatCompletion.acreate(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are an AI assistant that generates Boolean search queries and object descriptions for furniture items."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            # Parse the response to get boolean query and description
+            response_text = response.choices[0].message.content
+            
+            # Extract boolean query and description using more robust parsing
+            parts = response_text.split("\n")
+            boolean_query = ""
+            object_description = ""
+            
+            for part in parts:
+                if "Boolean Query:" in part:
+                    boolean_query = part.split("Boolean Query:")[1].strip()
+                elif "Object Description:" in part:
+                    object_description = part.split("Object Description:")[1].strip()
+                elif boolean_query == "" and "AND" in part or "OR" in part or "NOT" in part:
+                    boolean_query = part.strip()
+                elif object_description == "" and len(part) > 50:  # Assuming descriptions are longer
+                    object_description = part.strip()
+            
+            # If parsing failed, use the original method as fallback
+            if not boolean_query or not object_description:
+                boolean_query = response_text.split("Boolean Query:")[1].split("Object Description:")[0].strip()
+                object_description = response_text.split("Object Description:")[1].strip()
+            
+            return boolean_query, object_description
+            
+        except RateLimitError as e:
+            print(f"Rate limit reached: {e}")
+            raise
+        except Exception as e:
+            print(f"Error processing query: {e}")
+            raise
+
+    async def get_embedding(self, text: str) -> np.ndarray:
+        """Get embedding for the given text"""
+        try:
+            embedding_response = await openai.Embedding.acreate(
+                model="text-embedding-ada-002",
+                input=text
+            )
+            return np.array(embedding_response.data[0].embedding)
+        except RateLimitError as e:
+            print(f"Rate limit reached: {e}")
+            raise
+        except Exception as e:
+            print(f"Error getting embedding: {e}")
+            raise
+
+    async def retrieve_with_query_object(self, query_object: Dict[str, str], k: int = 10) -> List[Tuple[str, float]]:
+        """Process query object and retrieve results"""
+        try:
+            # Generate boolean query and description
+            boolean_query, object_description = await self.process_query(query_object)
+            
+            # Get embedding for the description
+            query_embedding = await self.get_embedding(object_description)
+            
+            # Get results using boolean query and similarity
+            results = self.retrieve_with_boolean_and_similarity(
+                boolean_query,
+                query_embedding,
+                k=k
+            )
+            
+            return results
+            
+        except Exception as e:
+            print(f"Error in retrieval: {e}")
+            raise
+
     def build_and_save_index(self, data_file: str):
         """Build inverse index from the embedded data JSON file and save it"""
         print("Building inverse index...")
@@ -152,6 +271,8 @@ class SimpleRetrieval:
                 result = result.intersection(next_items)
             elif operator == 'OR':
                 result = result.union(next_items)
+            elif operator == 'NOT':
+                result = result.difference(next_items)
                 
             i += 2
             
@@ -159,6 +280,10 @@ class SimpleRetrieval:
     
     def _process_parentheses(self, query: str) -> str:
         """Process parentheses in the query and evaluate sub-expressions"""
+        # Remove extra spaces and normalize operators
+        query = ' '.join(query.split())
+        query = query.replace('( ', '(').replace(' )', ')')
+        
         # Find the innermost parentheses
         while '(' in query:
             # Find the innermost parentheses
@@ -186,26 +311,31 @@ class SimpleRetrieval:
     def boolean_query(self, query: str) -> Set[str]:
         """
         Process a boolean query with parentheses and return matching item_ids
-        Query format: (word1 AND word2) OR (word3 AND word4)
+        Query format: (word1 AND word2) OR (word3 AND NOT word4)
         """
-        # Convert query to lowercase and remove extra spaces
-        query = ' '.join(query.lower().split())
-        
-        # Process parentheses
-        query = self._process_parentheses(query)
-        
-        # Split query into terms
-        terms = query.split()
-        
-        # Evaluate the final expression
-        result = self._evaluate_expression(terms)
-        
-        # Clean up temporary tokens
-        for key in list(self.index.keys()):
-            if key.startswith('__TEMP_'):
-                del self.index[key]
-                
-        return result
+        try:
+            # Convert query to lowercase and remove extra spaces
+            query = ' '.join(query.lower().split())
+            
+            # Process parentheses
+            query = self._process_parentheses(query)
+            
+            # Split query into terms
+            terms = query.split()
+            
+            # Evaluate the final expression
+            result = self._evaluate_expression(terms)
+            
+            # Clean up temporary tokens
+            for key in list(self.index.keys()):
+                if key.startswith('__TEMP_'):
+                    del self.index[key]
+                    
+            return result
+            
+        except Exception as e:
+            print(f"Error processing boolean query: {e}")
+            return set()
     
     def build_faiss_index(self, embeddings: np.ndarray, item_ids: List[str]):
         """Build FAISS index from embeddings"""

@@ -60,9 +60,15 @@ class DesignItem(BaseModel):
 class DesignResponse(BaseModel):
     items: List[DesignItem]
 
+class QueryObject(BaseModel):
+    material: str
+    style: str
+    key_items: str
+    keywords: str
+    user_conversation: str
+
 class RetrievalQuery(BaseModel):
-    boolean_query: str
-    query_embedding: List[float]
+    query_object: QueryObject
     k: int = 10
 
 class RetrievalResponse(BaseModel):
@@ -271,13 +277,9 @@ def create_room_grid_image(room_spec: RoomSpec) -> BytesIO:
 @app.post("/retrieve-items", response_model=RetrievalResponse)
 async def retrieve_items(query: RetrievalQuery):
     try:
-        # Convert query embedding to numpy array
-        query_embedding = np.array(query.query_embedding)
-        
-        # Get results using boolean query and similarity
-        results = retrieval_system.retrieve_with_boolean_and_similarity(
-            query.boolean_query,
-            query_embedding,
+        # Get results using the query object
+        results = await retrieval_system.retrieve_with_query_object(
+            query.query_object.dict(),
             k=query.k
         )
         
@@ -286,6 +288,10 @@ async def retrieve_items(query: RetrievalQuery):
         
         return {"items": items}
         
+    except RateLimitError as e:
+        print(f"Rate limit reached: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached. Please try again later.")
     except Exception as e:
         print(e)
         traceback.print_exc()
