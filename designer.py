@@ -101,21 +101,22 @@ class Designer:
     async def understand_image_and_task(self):
         introductory = f"""You are an seasoned interior designer. Given this layout of a room. The surrounding gray area is marked as walls and the red blocks
         denote the door and windows. Given the following requirements, I want to design an **aesthetically pleasing {self.requirement}**. 
-        The cells highlighted in color (walls, door, window) are blocked and cannot be used to keep any items. First, list the furniture items 
+        The cells highlighted in color (walls, door, window) are blocked and cannot be used to keep any items. First, suggest a color in HEX format for the walls and list the furniture items 
         (not bedding, vase etc.) to be placed in the room, sorted by their size in decreasing order.
         Keep in mind that I will ask you to place these objects on the grid in 
-        later prompts. Just list the furniture items in sorted order in the JSON format and nothing else: [{{'name': 'name of the furniture', 'description': 'a short description'}}, ...] """
+        later prompts. Give your output in 2 lines:\nCOLOR: <Wall color as #xxxxxx>\nJSON: <[{{"name": "name of the furniture", "color": <color of the furniture>, "description": "a short description"}}, ...]>"""
 
         response = await self.model.query(introductory, self.scene_image)
         if self.verbose:
             print("understand_image_and_task - Input:", introductory)
             print("understand_image_and_task - Output:", response)
-
-        response = response.replace("```json", "").replace("```", "").strip()
+        wall_color = response.split("\n")[0].replace("COLOR: ", "")
+        response = response.split("JSON: ")[1].replace("json", "").replace("```", "").strip()
         self.list_of_objects = json.loads(response)
 
         if self.verbose:
             print("list_of_objects:", self.list_of_objects)
+        return wall_color
 
     def detect_overlap(self, blocked_regions, placed_region):
         blocked_cells = []
@@ -283,13 +284,13 @@ class Designer:
         return self.design
 
     async def run(self):
-        await self.understand_image_and_task()
+        wall_color = await self.understand_image_and_task()
         await self.add_objects()
-        return self.write_to_json()
+        return wall_color, self.write_to_json()
 
     async def run_with_style(self, style):
         self.requirement = style + " " + self.requirement
-        await self.understand_image_and_task()
+        wall_color = await self.understand_image_and_task()
         await self.add_objects()
-        return self.write_to_json()
+        return wall_color, self.write_to_json()
 
