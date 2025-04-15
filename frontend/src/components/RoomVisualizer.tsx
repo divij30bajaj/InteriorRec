@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { Canvas, useThree, useFrame, useLoader } from '@react-three/fiber';
-import { OrbitControls, Box, Plane, Text } from '@react-three/drei';
+import { OrbitControls, Box, Plane, Text, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { DoorWindow } from '../types';
 import Furniture from './Furniture';
@@ -86,7 +86,6 @@ const Room = ({
 
   return (
     <group>
-      {/* Floor */}
       <Plane 
         args={[roomLength, roomWidth]} 
         rotation={[-Math.PI / 2, 0, 0]} 

@@ -11,6 +11,9 @@ with open("embedded_data.json", "r") as f:
     data = json.load(f)
     data_map = {item["item_id"]: item for item in data}
 
+with open("mapping_3d_spins.json", "r") as f:
+    image_mapping = json.load(f)
+
 stored_embeddings = torch.tensor([item["embedding"] for item in data])
 
 async def simple_retriever(query: str = "a yellow sofa", top_k: int = 1):
@@ -24,7 +27,7 @@ async def simple_retriever(query: str = "a yellow sofa", top_k: int = 1):
     for hit in hits:
         idx = hit['corpus_id']  # index of the stored item
         score = hit['score']
-        if score < 1.0:
+        if score < 0.99:
             results.append((data[idx], score))
     return results
 
@@ -55,4 +58,11 @@ async def get_similar_items(item_id: str, liked_items: list[str] = [], disliked_
     print([(item[1], item[0]["item_id"]) for item in items])
     reranked_items = await rerank_items(items, liked_items, disliked_items)
     print([(item[1], item[0]["item_id"]) for item in reranked_items])
-    return [{"item_id": item[0]["item_id"], "description": item[0]["description"]} for item in reranked_items]
+
+    return [{
+                "item_id": item[0]["item_id"],
+                "description": item[0]["description"],
+                "image_id": image_mapping[item[0]["item_id"]] 
+                if item[0]["item_id"] in image_mapping else None
+            } for item in reranked_items
+        ]

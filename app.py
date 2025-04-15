@@ -4,19 +4,16 @@ import math
 import os
 import sys
 import traceback
-
-from typing import List, Tuple, Dict
-
 from io import BytesIO
+from typing import Dict, List, Tuple
 
-
+import numpy as np
 import requests
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from openai import RateLimitError
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
-import numpy as np
 
 import retriever
 
@@ -78,6 +75,7 @@ class RetrievalResponse(BaseModel):
 class SimilarItem(BaseModel):
     item_id: str
     description: str
+    image_id: str|None
 
 
 app = FastAPI()
@@ -390,7 +388,9 @@ async def get_similar_items(item_id: str, liked_items: List[str], disliked_items
     Get similar items from the database.
     """
     try:
-        return await retriever.get_similar_items(item_id, liked_items, disliked_items)
+        items = await retriever.get_similar_items(item_id, liked_items, disliked_items)
+        print("get-similar-items", items)
+        return [item for item in items if item["item_id"] != item_id]
     except RateLimitError as e:
         print(f"Rate limit reached: {e}")
         traceback.print_exc()

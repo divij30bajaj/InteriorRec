@@ -29,97 +29,35 @@ interface RoomControlsProps {
   onSelectDesign?: (index: number) => void;
   likedFurniture?: string[];
   dislikedFurniture?: string[];
+  onFurnitureSelect?: (item: DesignItem | null) => void;
 }
 
 // Model thumbnail component
-const ModelThumbnail = ({ itemId }: { itemId: string }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+const ModelThumbnail = ({ imageId }: { imageId: string }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
-
-    // Set up scene
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf1f3f5);
-
-    // Set up camera
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
-    camera.position.z = 1.5;
-    camera.position.y = 0.5;
-
-    // Set up renderer
-    const renderer = new THREE.WebGLRenderer({
-      canvas: canvasRef.current,
-      antialias: true,
-    });
-    renderer.setSize(80, 80);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-
-    // Add lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambientLight);
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(5, 5, 5);
-    scene.add(directionalLight);
-
-    // Load model
-    const loader = new GLTFLoader();
-    const modelUrl = `http://127.0.0.1:5000/s3-proxy/${itemId}`;
-
-    loader.load(
-      modelUrl,
-      (gltf) => {
-        // Center and scale model to fit view
-        const box = new THREE.Box3().setFromObject(gltf.scene);
-        const center = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
-
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const scale = 1 / maxDim;
-
-        gltf.scene.position.x = -center.x * scale;
-        gltf.scene.position.y = -center.y * scale;
-        gltf.scene.position.z = -center.z * scale;
-        gltf.scene.scale.multiplyScalar(scale);
-
-        scene.add(gltf.scene);
-
-        // Add orbit controls for a bit of movement
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.minDistance = 1;
-        controls.maxDistance = 3;
-        controls.autoRotate = true;
-        controls.autoRotateSpeed = 3;
-
-        // Animation loop
-        const animate = () => {
-          requestAnimationFrame(animate);
-          controls.update();
-          renderer.render(scene, camera);
-        };
-
-        animate();
-        setLoading(false);
-      },
-      undefined,
-      (error) => {
-        console.error(`Error loading model thumbnail: ${error}`);
-        setError(true);
-        setLoading(false);
-      }
-    );
-
-    // Cleanup
-    return () => {
-      renderer.dispose();
-      scene.clear();
+    if (!imageId) {
+      setError(true);
+      setLoading(false);
+      return;
+    }
+    const handleLoad = () => {
+      setLoading(false);
     };
-  }, [itemId]);
+    const handleError = () => {
+      console.error(`Error loading image thumbnail: ${imageId}`);
+      setError(true);
+      setLoading(false);
+    };
+    if (imgRef.current) {
+      imgRef.current.onload = handleLoad;
+      imgRef.current.onerror = handleError;
+    }
+
+  }, [imageId]);
 
   if (error) {
     return (
@@ -129,10 +67,25 @@ const ModelThumbnail = ({ itemId }: { itemId: string }) => {
     );
   }
 
+  // Get first two characters of the imageId for the folder structure
+  const prefix = imageId ? imageId.substring(0, 2) : '';
+  const imageUrl = `https://amazon-berkeley-objects.s3.amazonaws.com/spins/original/${prefix}/${imageId}/${imageId}_01.jpg`;
+
   return (
     <>
       {loading && <div className="thumbnail-loading">Loading...</div>}
-      <canvas ref={canvasRef} className="model-thumbnail" />
+      <img 
+        ref={imgRef}
+        className="model-thumbnail" 
+        src={imageUrl} 
+        alt={`Thumbnail for ${imageId}`}
+        style={{ width: '80px', height: '80px', objectFit: 'cover' }}
+        onLoad={() => setLoading(false)}
+        onError={() => {
+          setError(true);
+          setLoading(false);
+        }}
+      />
     </>
   );
 };
@@ -160,7 +113,8 @@ const RoomControls = ({
   designOptions,
   onSelectDesign,
   likedFurniture = [],
-  dislikedFurniture = []
+  dislikedFurniture = [],
+  onFurnitureSelect
 }: RoomControlsProps) => {
   const [newDoor, setNewDoor] = useState<DoorWindow>({
     wall: 'north',
@@ -220,6 +174,44 @@ const RoomControls = ({
     const data = await similarItems.json();
     console.log(data);
     setSimilarItems(data);
+  };
+
+  // Function to replace selected furniture with a similar item
+  const replaceFurnitureWithSimilarItem = (similarItem: any) => {
+    if (!selectedFurniture || !design) return;
+    
+    // Create a copy of the design
+    const updatedDesign = { ...design };
+    
+    // Find the index of the selected furniture
+    const itemIndex = updatedDesign.items.findIndex(
+      item => item.item_id === selectedFurniture.item_id
+    );
+    
+    if (itemIndex !== -1) {
+      // Create a new item with the similar item's ID but keep the position and orientation
+      const replacementItem = {
+        ...updatedDesign.items[itemIndex],
+        item_id: similarItem.item_id,
+        object: similarItem.description || similarItem.object || updatedDesign.items[itemIndex].object
+      };
+      
+      // Replace the item in the design
+      updatedDesign.items[itemIndex] = replacementItem;
+      
+      // Update the design in the parent component
+      // We need to force a re-render of the entire design
+      const event = new CustomEvent('design-updated', { 
+        detail: { design: updatedDesign } 
+      });
+      window.dispatchEvent(event);
+      
+      // Update the selected furniture to the new item
+      onFurnitureSelect?.(replacementItem);
+      
+      // Close the similar items list
+      setSimilarItems([]);
+    }
   };
 
   const handlePositionChange = (axis: 'x' | 'z', value: number) => {
@@ -358,10 +350,15 @@ const RoomControls = ({
                   <h4>Similar Items</h4>
                   <ul>
                     {similarItems.map((item: any) => (
-                      <div className="furniture-details" key={item.item_id}>
+                      <div 
+                        className="furniture-details" 
+                        key={item.item_id}
+                        onClick={() => replaceFurnitureWithSimilarItem(item)}
+                        style={{ cursor: 'pointer' }}
+                      >
                         <div className="similar-item">
                           <div className="thumbnail-container">
-                            <ModelThumbnail itemId={item.item_id} />
+                            <ModelThumbnail imageId={item.image_id} />
                           </div>
                           <div className="item-info">
                             <li>{item.item_id} - {item.description}</li>
@@ -374,30 +371,6 @@ const RoomControls = ({
               )}
             </>
           }
-          {/* {isItemLiked(selectedFurniture.item_id) &&
-            <>
-              <button className="generate-button" onClick={getGoesWithItem}>Goes with this item</button>
-              {similarItems.length > 0 && (
-                <div className="similar-items-list">
-                  <h4>Goes with this item</h4>
-                  <ul>
-                    {similarItems.map((item: any) => (
-                      <div className="furniture-details" key={item.item_id}>
-                        <div className="similar-item">
-                          <div className="thumbnail-container">
-                            <ModelThumbnail itemId={item.item_id} />
-                          </div>
-                          <div className="item-info">
-                            <li>{item.item_id} - {item.description}</li>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </>
-          } */}
         </div>
       )}
 
