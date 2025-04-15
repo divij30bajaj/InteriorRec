@@ -316,6 +316,17 @@ const RoomControls = ({
       {!design && (
         <>
         <div className="control-section">
+          <h3>Room Type</h3>
+          <select
+            value={roomType}
+            onChange={(e) => onRoomTypeChange(e.target.value as 'livingRoom' | 'bedroom' | 'diningRoom')}
+          >
+            <option value="livingRoom">Living Room</option>
+            <option value="bedroom">Bedroom</option>
+            <option value="diningRoom">Dining Room</option>
+          </select>
+        </div>
+        <div className="control-section">
           <h3>Room Dimensions</h3>
           <div className="control-group">
             <label htmlFor="length">Length of room</label>
@@ -491,18 +502,6 @@ const RoomControls = ({
               </ul>
             )}
           </div>
-        </div>
-
-        <div className="control-section">
-          <h3>Room Type</h3>
-          <select
-            value={roomType}
-            onChange={(e) => onRoomTypeChange(e.target.value as 'livingRoom' | 'bedroom' | 'diningRoom')}
-          >
-            <option value="livingRoom">Living Room</option>
-            <option value="bedroom">Bedroom</option>
-            <option value="diningRoom">Dining Room</option>
-          </select>
         </div>
 
         <button className="generate-button" onClick={onSubmit}>Generate</button>

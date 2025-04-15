@@ -59,6 +59,7 @@ class DesignItem(BaseModel):
 
 class DesignResponse(BaseModel):
     items: List[DesignItem]
+    wallColor: str
 
 class QueryObject(BaseModel):
     material: str
@@ -370,9 +371,9 @@ async def generate_design(room_spec: RoomSpec):
             verbose=True
         )
         
-        design = await designer.run_with_style(room_spec.style)
+        wall_color, items = await designer.run_with_style(room_spec.style)
         
-        return {"items": design}
+        return {"items": items, "wallColor": wall_color}
 
     except RateLimitError as e:
         print(f"Rate limit reached: {e}")

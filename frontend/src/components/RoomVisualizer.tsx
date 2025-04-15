@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { Canvas, useThree, useFrame } from '@react-three/fiber';
+import { Canvas, useThree, useFrame, useLoader } from '@react-three/fiber';
 import { OrbitControls, Box, Plane, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { DoorWindow } from '../types';
@@ -71,6 +71,10 @@ const Room = ({
   const wallHeight = 8; // Standard ceiling height in feet
   const wallThickness = 0.5; // Wall thickness in feet
 
+  const floorTexture = useLoader(THREE.TextureLoader, '/textures/floor.jpg');
+  floorTexture.wrapS = floorTexture.wrapT = THREE.RepeatWrapping;
+  floorTexture.repeat.set(roomLength/2, roomWidth/2);
+
   // Convert grid position to world position
   const gridToWorld = (gridX: number, gridY: number): [number, number, number] => {
     const cellWidth = 1;
@@ -88,7 +92,7 @@ const Room = ({
         rotation={[-Math.PI / 2, 0, 0]} 
         position={[0, 0, 0]}
       >
-        <meshStandardMaterial color="#f0f0f0" />
+        <meshStandardMaterial map={floorTexture} />
       </Plane>
       
       {/* Ceiling */}
@@ -97,7 +101,7 @@ const Room = ({
         rotation={[Math.PI / 2, 0, 0]} 
         position={[0, wallHeight, 0]}
       >
-        <meshStandardMaterial color="#e0e0e0" />
+        <meshStandardMaterial color="#FFFFFF" />
       </Plane>
       
       {showWalls && (
@@ -112,42 +116,46 @@ const Room = ({
             wall="north"
             doors={doors}
             windows={windows}
+            color={design?.wallColor || '#e8e8e8'}
           />
-          
+
           {/* South Wall */}
-          <Wall 
-            length={roomLength} 
-            height={wallHeight} 
+          <Wall
+            length={roomLength}
+            height={wallHeight}
             thickness={wallThickness}
-            position={[0, wallHeight/2, halfWidth]} 
+            position={[0, wallHeight/2, halfWidth]}
             rotation={[0, Math.PI, 0]}
             wall="south"
             doors={doors}
             windows={windows}
+            color={design?.wallColor || '#e8e8e8'}
           />
-          
+
           {/* East Wall */}
-          <Wall 
-            length={roomWidth} 
-            height={wallHeight} 
+          <Wall
+            length={roomWidth}
+            height={wallHeight}
             thickness={wallThickness}
-            position={[halfLength, wallHeight/2, 0]} 
+            position={[halfLength, wallHeight/2, 0]}
             rotation={[0, -Math.PI/2, 0]}
             wall="east"
             doors={doors}
             windows={windows}
+            color={design?.wallColor || '#e8e8e8'}
           />
-          
+
           {/* West Wall */}
-          <Wall 
-            length={roomWidth} 
-            height={wallHeight} 
+          <Wall
+            length={roomWidth}
+            height={wallHeight}
             thickness={wallThickness}
-            position={[-halfLength, wallHeight/2, 0]} 
+            position={[-halfLength, wallHeight/2, 0]}
             rotation={[0, Math.PI/2, 0]}
             wall="west"
             doors={doors}
             windows={windows}
+            color={design?.wallColor || '#e8e8e8'}
           />
         </>
       )}
@@ -184,7 +192,7 @@ interface WallProps {
   windows: DoorWindow[];
 }
 
-const Wall = ({ length, height, thickness, position, rotation, wall, doors, windows }: WallProps) => {
+const Wall = ({ length, height, thickness, position, rotation, wall, doors, windows, color }: WallProps) => {
   // Filter doors and windows for this wall
   const wallDoors = doors.filter(door => door.wall === wall);
   const wallWindows = windows.filter(window => window.wall === wall);
@@ -193,7 +201,7 @@ const Wall = ({ length, height, thickness, position, rotation, wall, doors, wind
     <group position={position} rotation={rotation}>
       {/* Main wall */}
       <Box args={[length, height, thickness]} castShadow receiveShadow>
-        <meshStandardMaterial color="#e8e8e8" />
+        <meshStandardMaterial color={color} />
       </Box>
       
       {/* Render doors */}

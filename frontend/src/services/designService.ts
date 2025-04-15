@@ -9,6 +9,7 @@ export interface DesignItem {
 
 export interface RoomDesign {
   items: DesignItem[];
+  wallColor: string;
   style?: 'minimal' | 'mid-century' | 'modern';
 }
 
