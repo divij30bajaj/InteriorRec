@@ -400,6 +400,21 @@ async def get_similar_items(item_id: str, liked_items: List[str], disliked_items
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/get-similar-items-with-scene", response_model=List[SimilarItem])
+async def get_similar_items_with_scene(item_id: str, liked_items: List[str], disliked_items: List[str], scene_items: List[str]):
+    try:
+        items = await retriever.get_similar_items_with_scene(item_id, liked_items, disliked_items, scene_items, retrieval_system.index)
+        print("get-similar-items-with-scene", items)
+        return [item for item in items if item["item_id"] != item_id]
+    except RateLimitError as e:
+        print(f"Rate limit reached: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached. Please try again later.")
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/s3-proxy/{item_id}")
 async def s3_proxy(item_id: str):
     """

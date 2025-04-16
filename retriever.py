@@ -66,3 +66,35 @@ async def get_similar_items(item_id: str, liked_items: list[str] = [], disliked_
                 if item[0]["item_id"] in image_mapping else None
             } for item in reranked_items
         ]
+
+async def get_similar_items_with_scene(item_id: str, liked_items: list[str] = [], disliked_items: list[str] = [], scene_items: list[str] = [], index: dict[str, set[str]] = {}):
+    print("get_similar_items_with_scene", item_id)
+    if "item_keywords" in data_map[item_id]:
+        item_keywords = data_map[item_id]["item_keywords"].split(" ")
+    else:
+        return []
+    index_items = []
+    for keyword in item_keywords:
+        if keyword in index:
+            index_items.extend(index[keyword])
+    if len(index_items) == 0:
+        return []
+    print(item_keywords, index_items)
+    index_items_embeddings = torch.tensor([data_map[item]["embedding"] for item in index_items])
+
+    query_embedding = torch.mean(torch.stack([torch.tensor(data_map[item]["embedding"]) for item in scene_items]), dim=0)
+    hits = util.semantic_search(query_embedding, index_items_embeddings, top_k=10)
+    hits = hits[0]
+    results = []
+    for hit in hits:
+        idx = hit['corpus_id']  # index of the stored item
+        score = hit['score']
+        results.append((data[idx], score))
+    reranked_items = await rerank_items(results, liked_items, disliked_items)
+    return [{
+                "item_id": item[0]["item_id"],
+                "description": item[0]["description"],
+                "image_id": image_mapping[item[0]["item_id"]] 
+                if item[0]["item_id"] in image_mapping else None
+            } for item in reranked_items
+    ]
