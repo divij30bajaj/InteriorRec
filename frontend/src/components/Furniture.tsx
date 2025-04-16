@@ -39,20 +39,43 @@ const Furniture = ({
     }
   ) as GLTF;
 
+  // Clean up and reset when item changes
+  useEffect(() => {
+    if (groupRef.current) {
+      // Clear any previous models
+      while (groupRef.current.children.length > 0) {
+        groupRef.current.remove(groupRef.current.children[0]);
+      }
+      
+      setError(false);
+    }
+  }, [item.item_id]);
+
+  // Add the new model after it's loaded
   useEffect(() => {
     if (gltf.scene && groupRef.current) {
-      // Center the model
+      // Clear any previous content
+      while (groupRef.current.children.length > 0) {
+        groupRef.current.remove(groupRef.current.children[0]);
+      }
+      
+      // Calculate the bounding box to center the model horizontally
       const box = new THREE.Box3().setFromObject(gltf.scene);
       const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
       
-      // Center the model
+      // Center the model horizontally but keep the bottom at y=0
       gltf.scene.position.x = -center.x;
-      gltf.scene.position.y = -center.y;
       gltf.scene.position.z = -center.z;
       
-      groupRef.current.add(gltf.scene);
+      // Move the model up so that its bottom is at y=0
+      gltf.scene.position.y = -box.min.y;
+      
+      // Clone the scene to avoid sharing issues
+      const clonedScene = gltf.scene.clone();
+      groupRef.current.add(clonedScene);
     }
-  }, [gltf, item.item_id]);
+  }, [gltf]);
 
   return (
     <group 

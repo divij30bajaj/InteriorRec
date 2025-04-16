@@ -88,6 +88,47 @@ function App() {
     setLikedFurniture([...likedFurniture, itemId])
   }
   
+  // Handler to replace furniture with a similar item
+  const handleReplaceFurniture = (oldItemId: string, newItem: any) => {
+    if (design) {
+      // Find the item to be replaced
+      const itemToReplace = design.items.find(item => item.item_id === oldItemId);
+      
+      if (!itemToReplace) return;
+      handleLikeFurniture(newItem.item_id)
+      
+      // Create a deep copy of the current design to avoid side effects
+      const updatedDesign: RoomDesign = JSON.parse(JSON.stringify(design));
+      
+      // Replace just the specific item
+      const itemIndex = updatedDesign.items.findIndex(item => item.item_id === oldItemId);
+      if (itemIndex !== -1) {
+        // Create a new item with the new ID but keep EXACT same position, size and all other properties
+        updatedDesign.items[itemIndex] = {
+          ...updatedDesign.items[itemIndex],
+          item_id: newItem.item_id,
+          object: newItem.description || newItem.object || updatedDesign.items[itemIndex].object
+        };
+        
+        // Update the design state with the completely new object
+        setDesign(updatedDesign);
+        
+        // Update the selected furniture if it was the one replaced
+        if (selectedFurniture && selectedFurniture.item_id === oldItemId) {
+          // Create a new reference for the selected furniture
+          const updatedSelectedItem = {
+            ...updatedDesign.items[itemIndex]
+          };
+          
+          // Clear and then set the selected furniture
+          setSelectedFurniture(null);
+          setTimeout(() => {
+            setSelectedFurniture(updatedSelectedItem);
+          }, 10);
+        }
+      }
+    }
+  };
 
   const handleSelectDesign = (index: number) => {
     if (designOptions && designOptions.length > index) {
@@ -190,6 +231,7 @@ function App() {
               onSelectDesign={handleSelectDesign}
               likedFurniture={likedFurniture}
               dislikedFurniture={dislikedFurniture}
+              onReplaceFurniture={handleReplaceFurniture}
             />
           </div>
         </div>

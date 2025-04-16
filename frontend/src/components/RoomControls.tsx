@@ -30,6 +30,7 @@ interface RoomControlsProps {
   likedFurniture?: string[];
   dislikedFurniture?: string[];
   onFurnitureSelect?: (item: DesignItem | null) => void;
+  onReplaceFurniture?: (oldItemId: string, newItem: any) => void;
 }
 
 // Model thumbnail component
@@ -79,7 +80,6 @@ const ModelThumbnail = ({ imageId }: { imageId: string }) => {
         className="model-thumbnail" 
         src={imageUrl} 
         alt={`Thumbnail for ${imageId}`}
-        style={{ width: '80px', height: '80px', objectFit: 'cover' }}
         onLoad={() => setLoading(false)}
         onError={() => {
           setError(true);
@@ -114,7 +114,8 @@ const RoomControls = ({
   onSelectDesign,
   likedFurniture = [],
   dislikedFurniture = [],
-  onFurnitureSelect
+  onFurnitureSelect,
+  onReplaceFurniture
 }: RoomControlsProps) => {
   const [newDoor, setNewDoor] = useState<DoorWindow>({
     wall: 'north',
@@ -180,34 +181,9 @@ const RoomControls = ({
   const replaceFurnitureWithSimilarItem = (similarItem: any) => {
     if (!selectedFurniture || !design) return;
     
-    // Create a copy of the design
-    const updatedDesign = { ...design };
-    
-    // Find the index of the selected furniture
-    const itemIndex = updatedDesign.items.findIndex(
-      item => item.item_id === selectedFurniture.item_id
-    );
-    
-    if (itemIndex !== -1) {
-      // Create a new item with the similar item's ID but keep the position and orientation
-      const replacementItem = {
-        ...updatedDesign.items[itemIndex],
-        item_id: similarItem.item_id,
-        object: similarItem.description || similarItem.object || updatedDesign.items[itemIndex].object
-      };
-      
-      // Replace the item in the design
-      updatedDesign.items[itemIndex] = replacementItem;
-      
-      // Update the design in the parent component
-      // We need to force a re-render of the entire design
-      const event = new CustomEvent('design-updated', { 
-        detail: { design: updatedDesign } 
-      });
-      window.dispatchEvent(event);
-      
-      // Update the selected furniture to the new item
-      onFurnitureSelect?.(replacementItem);
+    // Use the parent component's handler to replace the furniture
+    if (onReplaceFurniture) {
+      onReplaceFurniture(selectedFurniture.item_id, similarItem);
       
       // Close the similar items list
       setSimilarItems([]);

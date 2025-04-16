@@ -70,10 +70,21 @@ const Room = ({
   const halfWidth = roomWidth / 2;
   const wallHeight = 8; // Standard ceiling height in feet
   const wallThickness = 0.5; // Wall thickness in feet
-
-  const floorTexture = useLoader(THREE.TextureLoader, '/textures/floor.jpg');
+  
+  // Load floor texture
+  const floorTexture = useTexture('/textures/floor.jpg');
+  
+  // Set texture to repeat across the floor based on room size
   floorTexture.wrapS = floorTexture.wrapT = THREE.RepeatWrapping;
   floorTexture.repeat.set(roomLength/2, roomWidth/2);
+
+  // Force re-render when design changes
+  const [designVersion, setDesignVersion] = useState(0);
+
+  // Update version when design changes
+  useEffect(() => {
+    setDesignVersion(prev => prev + 1);
+  }, [design]);
 
   // Convert grid position to world position
   const gridToWorld = (gridX: number, gridY: number): [number, number, number] => {
@@ -167,7 +178,7 @@ const Room = ({
         const position = gridToWorld((item.start[1]+item.end[1])/2, (item.start[0]+item.end[0])/2);
         return (
           <Furniture
-            key={`furniture-${index}`}
+            key={`furniture-${item.item_id}-${index}-${designVersion}`}
             item={item}
             position={position}
             scale={3}
