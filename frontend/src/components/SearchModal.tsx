@@ -59,7 +59,7 @@ const ModelThumbnail = ({ imageId }: { imageId: string }) => {
     );
   }
 
-  
+
   // Get first two characters of the imageId for the folder structure
   const prefix = imageId ? imageId.substring(0, 2) : '';
   const imageUrl = `https://amazon-berkeley-objects.s3.amazonaws.com/spins/original/${prefix}/${imageId}/${imageId}_01.jpg`;
@@ -67,10 +67,10 @@ const ModelThumbnail = ({ imageId }: { imageId: string }) => {
   return (
     <>
       {loading && <div className="thumbnail-loading">Loading...</div>}
-      <img 
+      <img
         ref={imgRef}
-        className="model-thumbnail" 
-        src={imageUrl} 
+        className="model-thumbnail"
+        src={imageUrl}
         alt={`Thumbnail for ${imageId}`}
         style={{ width: '80px', height: '80px', objectFit: 'cover' }}
         onLoad={() => setLoading(false)}
@@ -94,7 +94,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, selectedItem
   const handleSearch = async () => {
     setLoading(true);
     setError(null);
-    const queryObject : QueryObject = {
+    const queryObject: QueryObject = {
       selectedItemId: selectedItemId,
       user_query: query
     }
@@ -103,7 +103,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, selectedItem
         query_object: queryObject,
         k: 10,
       };
-  
+
       const response = await fetch(`${API_URL}/retrieve-items`, {
         method: "POST",
         headers: {
@@ -111,7 +111,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, selectedItem
         },
         body: JSON.stringify(requestBody),
       });
-  
+
       if (!response.ok) {
         throw new Error("Network response was not ok");
       }
@@ -125,16 +125,16 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, selectedItem
       setLoading(false);
     }
   };
-  
+
 
   const runRetrievers = async () => {
     try {
       await Promise.all([
-        handleSearch(),    
-        getSimilarItems(), 
-        handleGoesWith(),  
+        handleSearch(),
+        getSimilarItems(),
+        handleGoesWith(),
       ]);
-    } catch(err) {
+    } catch (err) {
       console.log("One of the retrievers failed: " + err);
     }
   }
@@ -192,84 +192,88 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, selectedItem
         <div className="search-results">
           <h3>Results</h3>
           {results.length > 0 ? (
+            <div className="search-results-list">
             <ul>
-            {results.map((item: any) => (
-              <div 
-                className="search-results" 
-                key={item.item_id}
-                onClick={() => {replaceFurniture(item); onClose()}}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="similar-item">
-                  <div className="thumbnail-container">
-                    <ModelThumbnail imageId={item.image_id} />
+              {results.map((item: any) => (
+                <div
+                  className="search-results"
+                  key={item.item_id}
+                  onClick={() => { replaceFurniture(item); onClose() }}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="similar-item">
+                    <div className="thumbnail-container">
+                      <ModelThumbnail imageId={item.image_id} />
+                    </div>
+                    <div className="item-info">
+                      <li>{item.item_id} - {item.description}</li>
+                    </div>
                   </div>
-                  <div className="item-info">
-                    <li>{item.item_id} - {item.description}</li>
                   </div>
-                </div>
-              </div>
-            ))}
-          </ul>
+                ))}
+              </ul>
+            </div>
           ) : (
             !loading && <p>No results found.</p>
           )}
         </div>
-        <div>
-          {similarItems.length > 0 && (
-            <>
-              <h3>You might also like</h3>
-              <div className="similar-items-list">
-                <ul>
-                  {similarItems.map((item: any) => (
-                    <div 
-                      className="furniture-details" 
-                      key={item.item_id}
-                      onClick={() => {replaceFurniture(item); onClose()}}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <div className="similar-item">
-                        <div className="thumbnail-container">
-                          <ModelThumbnail imageId={item.image_id} />
-                        </div>
-                        <div className="item-info">
-                          <li>{item.item_id} - {item.description}</li>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </ul>
-              </div>
-              </>
-            )}
-        </div>
-        <div>
-        {goesWithItems.length > 0 && (
-            <>
-              <h3>Items that go with the room</h3>
-              <div className="similar-items-list">
-                <ul>
-                  {goesWithItems.map((item: any) => (
-                    <div 
-                      className="furniture-details" 
-                      key={item.item_id}
-                      onClick={() => {replaceFurniture(item); onClose()}}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <div className="similar-item">
-                        <div className="thumbnail-container">
-                          <ModelThumbnail imageId={item.image_id} />
-                        </div>
-                        <div className="item-info">
-                          <li>{item.item_id} - {item.description}</li>
+        <div className="similar-items-results">
+          <div className="similar-items-results-div">
+            {similarItems.length > 0 && (
+              <>
+                <h3>You might also like</h3>
+                <div className="similar-items-list">
+                  <ul>
+                    {similarItems.map((item: any) => (
+                      <div
+                        className="furniture-details"
+                        key={item.item_id}
+                        onClick={() => { replaceFurniture(item); onClose() }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <div className="similar-item">
+                          <div className="thumbnail-container">
+                            <ModelThumbnail imageId={item.image_id} />
+                          </div>
+                          <div className="item-info">
+                            <li>{item.item_id} - {item.description}</li>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </ul>
-              </div>
+                    ))}
+                  </ul>
+                </div>
               </>
             )}
+          </div>
+          <div className="similar-items-results-div">
+            {goesWithItems.length > 0 && (
+              <>
+                <h3>Items that go with the room</h3>
+                <div className="similar-items-list">
+                  <ul>
+                    {goesWithItems.map((item: any) => (
+                      <div
+                        className="furniture-details"
+                        key={item.item_id}
+                        onClick={() => { replaceFurniture(item); onClose() }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <div className="similar-item">
+                          <div className="thumbnail-container">
+                            <ModelThumbnail imageId={item.image_id} />
+                          </div>
+                          <div className="item-info">
+                            <li>{item.item_id} - {item.description}</li>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

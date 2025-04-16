@@ -68,10 +68,21 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+.similar-items-results {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.similar-items-results-div{
+  width: 50%;
+}
 
 /* Similar Items Styling */
 .similar-items-list {
   margin-top: 15px;
+  overflow: scroll;
+  height: 50vh;
 }
 
 .similar-items-list ul {

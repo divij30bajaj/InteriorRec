@@ -505,7 +505,6 @@ textarea {
   padding: 20px;
   border-radius: 8px;
   width: 90%;
-  max-width: 800px;
   position: relative;
   height: 80vh;
 }
