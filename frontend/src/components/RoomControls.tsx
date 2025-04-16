@@ -30,15 +30,8 @@ interface RoomControlsProps {
   onFurnitureSelect?: (item: DesignItem | null) => void;
   setShowPrompt: (showPrompt: boolean) => void;
   showPrompt?: boolean
-  onReplaceFurniture?: (oldItemId: string, newItem: any) => void;
-}
-
-interface QueryObject {
-  material: string
-  style: string
-  name: string
-  keywords: string
-  user_query: string
+  replaceFurniture?: (oldItemId: string, newItem: any) => void;
+  onReplace: (replaced: boolean) => void;
 }
 
 
@@ -66,11 +59,10 @@ const RoomControls = ({
   onSelectDesign,
   likedFurniture = [],
   dislikedFurniture = [],
-  onFurnitureSelect,
   setShowPrompt,
   showPrompt,
-  onFurnitureSelect,
-  onReplaceFurniture
+  onReplace,
+  replaceFurniture
 }: RoomControlsProps) => {
   const [newDoor, setNewDoor] = useState<DoorWindow>({
     wall: 'north',
@@ -104,8 +96,8 @@ const RoomControls = ({
     return [x, 0, z];
   };
 
-  const [similarItems, setSimilarItems] = useState([]);
   const [isModalOpen, setModalOpen] = useState<boolean>(false);
+  const currentScene = design?.items.map((item) => item.item_id);
 
   const currentPosition = getFurniturePosition();
 
@@ -122,37 +114,9 @@ const RoomControls = ({
   const replaceFurnitureWithSimilarItem = (similarItem: any) => {
     if (!selectedFurniture || !design) return;
     
-    // Create a copy of the design
-    const updatedDesign = { ...design };
-    
-    // Find the index of the selected furniture
-    const itemIndex = updatedDesign.items.findIndex(
-      item => item.item_id === selectedFurniture.item_id
-    );
-    
-    if (itemIndex !== -1) {
-      // Create a new item with the similar item's ID but keep the position and orientation
-      const replacementItem = {
-        ...updatedDesign.items[itemIndex],
-        item_id: similarItem.item_id,
-        object: similarItem.description || similarItem.object || updatedDesign.items[itemIndex].object
-      };
-      
-      // Replace the item in the design
-      updatedDesign.items[itemIndex] = replacementItem;
-      
-      // Update the design in the parent component
-      // We need to force a re-render of the entire design
-      const event = new CustomEvent('design-updated', { 
-        detail: { design: updatedDesign } 
-      });
-      window.dispatchEvent(event);
-      
-      // Update the selected furniture to the new item
-      onFurnitureSelect?.(replacementItem);
-      
-      // Close the similar items list
-      setSimilarItems([]);
+    if (replaceFurniture) {
+      replaceFurniture(selectedFurniture.item_id, similarItem);
+      onReplace(true);
     }
   };
 
@@ -208,15 +172,6 @@ const RoomControls = ({
   const handleCloseModal = () => {
     setModalOpen(false);
   };
-
-  const query_object : QueryObject = {
-    material: "",
-    style: "",
-    name: "",
-    keywords: "",
-    user_query: ""
-  }
-
 
   return (
     <div className="room-controls">
@@ -302,7 +257,7 @@ const RoomControls = ({
               </>
             )}
           </div>
-          {showPrompt && (
+          {isItemDisliked(selectedFurniture.item_id) && (
             <div className="prompt">
               <p style={{fontStyle: "oblique"}}>Would you like to search for your favourite object?</p>
               <button onClick={handlePromptConfirm} style={{"margin": "10px 0"}}>
@@ -310,15 +265,17 @@ const RoomControls = ({
               </button>
             </div>
           )}
-          <SearchModal
-              isOpen={isModalOpen}
-              onClose={handleCloseModal}
-              query_object={query_object}
-              selectedItemId={selectedFurniture.item_id}
-              likedFurniture={likedFurniture}
-              dislikedFurniture={dislikedFurniture}
-              currentScene={[]}
-              replaceFurniture={replaceFurnitureWithSimilarItem}/>
+          {currentScene && 
+            <SearchModal
+                isOpen={isModalOpen}
+                onClose={handleCloseModal}
+                selectedItemId={selectedFurniture.item_id}
+                likedFurniture={likedFurniture}
+                dislikedFurniture={dislikedFurniture}
+                currentScene={currentScene}
+                replaceFurniture={replaceFurnitureWithSimilarItem}
+            />
+          }
         </div>
       )}
 

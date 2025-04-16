@@ -59,10 +59,7 @@ class DesignResponse(BaseModel):
     wallColor: str
 
 class QueryObject(BaseModel):
-    material: str
-    name: str
-    style: str
-    keywords: str
+    selectedItemId: str
     user_query: str
 
 class RetrievalQuery(BaseModel):

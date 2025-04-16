@@ -1,15 +1,83 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import './App.css'
 import RoomVisualizer from './components/RoomVisualizer'
 import RoomControls from './components/RoomControls'
 import { DoorWindow, RoomSpec } from './types'
-import { generateRoomDesign, RoomDesign, DesignItem } from './services/designService'
+import { generateRoomDesign, RoomDesign, DesignItem, API_URL } from './services/designService'
 
 // Define the result type
 interface Result {
   success: boolean;
   message: string;
 }
+
+type SearchResult = {
+  item_id: string;
+  image_id: string;
+  description: string;
+};
+
+type Scene = {
+  scene: SearchResult[];
+}
+
+const ModelThumbnail = ({ imageId }: { imageId: string }) => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    if (!imageId) {
+      setError(true);
+      setLoading(false);
+      return;
+    }
+    const handleLoad = () => {
+      setLoading(false);
+    };
+    const handleError = () => {
+      console.error(`Error loading image thumbnail: ${imageId}`);
+      setError(true);
+      setLoading(false);
+    };
+    if (imgRef.current) {
+      imgRef.current.onload = handleLoad;
+      imgRef.current.onerror = handleError;
+    }
+
+  }, [imageId]);
+
+  if (error) {
+    return (
+      <div className="thumbnail-placeholder">
+        <span>No Preview</span>
+      </div>
+    );
+  }
+
+  
+  // Get first two characters of the imageId for the folder structure
+  const prefix = imageId ? imageId.substring(0, 2) : '';
+  const imageUrl = `https://amazon-berkeley-objects.s3.amazonaws.com/spins/original/${prefix}/${imageId}/${imageId}_01.jpg`;
+
+  return (
+    <>
+      {loading && <div className="thumbnail-loading">Loading...</div>}
+      <img 
+        ref={imgRef}
+        className="model-thumbnail" 
+        src={imageUrl} 
+        alt={`Thumbnail for ${imageId}`}
+        style={{ width: '80px', height: '80px', objectFit: 'cover' }}
+        onLoad={() => setLoading(false)}
+        onError={() => {
+          setError(true);
+          setLoading(false);
+        }}
+      />
+    </>
+  );
+};
 
 function App() {
   const [roomLength, setRoomLength] = useState(16) // ~5m in feet
@@ -25,6 +93,8 @@ function App() {
   const [likedFurniture, setLikedFurniture] = useState<string[]>([])
   const [dislikedFurniture, setDislikedFurniture] = useState<string[]>([])
   const [showPrompt, setShowPrompt] = useState<boolean>(false);
+  const [isReplaced, setIsReplaced] = useState<boolean>(false);
+  const [suggestedScenes, setSuggestedScenes] = useState<SearchResult[][]>([]);
 
   const handleAddDoor = (door: DoorWindow) => {
     setDoors([...doors, door])
@@ -89,10 +159,28 @@ function App() {
     console.log("handleLikeFurniture itemId: ", itemId)
     setLikedFurniture([...likedFurniture, itemId])
   }
+
+  const getSimilarScenes = async () => {
+    const currentScene = design?.items.map((item) => item.item_id);
+    const similarScenesResult = await fetch(`${API_URL}/scene-goes-with-it?item_id=${selectedFurniture?.item_id}`,
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ liked_items: likedFurniture, disliked_items: dislikedFurniture, scene_items: currentScene }),
+        method: 'POST'
+      }
+    );
+    const data = await similarScenesResult.json();
+    console.log(data);
+    setSuggestedScenes(data);
+  }
   
   // Handler to replace furniture with a similar item
-  const handleReplaceFurniture = (oldItemId: string, newItem: any) => {
+  const handleReplaceFurniture = async (oldItemId: string, newItem: any) => {
     if (design) {
+      getSimilarScenes();
+
       // Find the item to be replaced
       const itemToReplace = design.items.find(item => item.item_id === oldItemId);
 
@@ -233,7 +321,8 @@ function App() {
               onSelectDesign={handleSelectDesign}
               likedFurniture={likedFurniture}
               dislikedFurniture={dislikedFurniture}
-              onReplaceFurniture={handleReplaceFurniture}
+              replaceFurniture={handleReplaceFurniture}
+              onReplace={setIsReplaced}
               setShowPrompt={setShowPrompt}
               showPrompt={showPrompt}
             />
@@ -251,6 +340,29 @@ function App() {
           <div className={`result-message ${result.success ? 'success' : 'error'}`}>
             <p>{result.message}</p>
           </div>
+        )}
+
+        {isReplaced && (
+            <div className={"style-options"}>
+                {suggestedScenes.map((itemList: SearchResult[]) => {
+                  return (
+                   <div className="style-option">
+                      {itemList.map((item: SearchResult) => {
+                        return (
+                          <div className="similar-item">
+                            <div className="thumbnail-container">
+                              <ModelThumbnail imageId={item.image_id} />
+                            </div>
+                            <div className="item-info">
+                              <li>{item.item_id} - {item.description}</li>
+                            </div>
+                          </div>
+                        )
+                      })}
+                   </div>
+                  )
+                })}
+            </div>
         )}
       </main>
     </div>

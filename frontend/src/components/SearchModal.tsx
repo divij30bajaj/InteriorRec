@@ -192,7 +192,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, selectedItem
         <div className="search-results">
           <h3>Results</h3>
           {results.length > 0 ? (
-            <div className="search-results-list">
+            <div className="similar-items-list">
             <ul>
               {results.map((item: any) => (
                 <div

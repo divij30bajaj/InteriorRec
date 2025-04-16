@@ -64,7 +64,6 @@ class SimpleRetrieval:
             User Conversation: {query_object['user_query']}
             Material: {query_object['material']}
             Style: {query_object['style']}
-            Object Name: {query_object['name']}
             Keywords: {query_object['keywords']}
 
             Please provide:
@@ -131,10 +130,21 @@ class SimpleRetrieval:
             print(f"Error getting embedding: {e}")
             raise
 
-    async def retrieve_with_query_object(self, query_object: Dict[str, str], k: int = 10) -> List[Dict[str, str]]:
+    async def retrieve_with_query_object(self, user_input: Dict[str, str], k: int = 10) -> List[Dict[str, str]]:
         """Process query object and retrieve results"""
         try:
             # Generate boolean query and description
+            itemId = user_input["selectedItemId"]
+            material = self.data_map[itemId]["material"] if "material" in self.data_map[itemId] else ""
+            style = self.data_map[itemId]["style"] if "style" in self.data_map[itemId] else ""
+            keywords = self.data_map[itemId]["keywords"] if "keywords" in self.data_map[itemId] else ""
+
+            query_object = {
+                "user_query": user_input["user_query"],
+                "material": material,
+                "style": style,
+                "keywords": keywords
+            }
             boolean_query, object_description = await self.process_query(query_object)
 
             # Get embedding for the description
