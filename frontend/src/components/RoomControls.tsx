@@ -1,9 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { DoorWindow } from '../types';
-import { API_URL, DesignItem, RoomDesign } from '../services/designService';
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { DesignItem, RoomDesign } from '../services/designService';
+import SearchModal from './SearchModal';
 
 interface RoomControlsProps {
   roomLength: number;
@@ -30,65 +28,19 @@ interface RoomControlsProps {
   likedFurniture?: string[];
   dislikedFurniture?: string[];
   onFurnitureSelect?: (item: DesignItem | null) => void;
+  setShowPrompt: (showPrompt: boolean) => void;
+  showPrompt?: boolean
   onReplaceFurniture?: (oldItemId: string, newItem: any) => void;
 }
 
-// Model thumbnail component
-const ModelThumbnail = ({ imageId }: { imageId: string }) => {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const imgRef = useRef<HTMLImageElement>(null);
+interface QueryObject {
+  material: string
+  style: string
+  name: string
+  keywords: string
+  user_query: string
+}
 
-  useEffect(() => {
-    if (!imageId) {
-      setError(true);
-      setLoading(false);
-      return;
-    }
-    const handleLoad = () => {
-      setLoading(false);
-    };
-    const handleError = () => {
-      console.error(`Error loading image thumbnail: ${imageId}`);
-      setError(true);
-      setLoading(false);
-    };
-    if (imgRef.current) {
-      imgRef.current.onload = handleLoad;
-      imgRef.current.onerror = handleError;
-    }
-
-  }, [imageId]);
-
-  if (error) {
-    return (
-      <div className="thumbnail-placeholder">
-        <span>No Preview</span>
-      </div>
-    );
-  }
-
-  // Get first two characters of the imageId for the folder structure
-  const prefix = imageId ? imageId.substring(0, 2) : '';
-  const imageUrl = `https://amazon-berkeley-objects.s3.amazonaws.com/spins/original/${prefix}/${imageId}/${imageId}_01.jpg`;
-
-  return (
-    <>
-      {loading && <div className="thumbnail-loading">Loading...</div>}
-      <img 
-        ref={imgRef}
-        className="model-thumbnail" 
-        src={imageUrl} 
-        alt={`Thumbnail for ${imageId}`}
-        onLoad={() => setLoading(false)}
-        onError={() => {
-          setError(true);
-          setLoading(false);
-        }}
-      />
-    </>
-  );
-};
 
 const RoomControls = ({
   roomLength,
@@ -114,6 +66,9 @@ const RoomControls = ({
   onSelectDesign,
   likedFurniture = [],
   dislikedFurniture = [],
+  onFurnitureSelect,
+  setShowPrompt,
+  showPrompt,
   onFurnitureSelect,
   onReplaceFurniture
 }: RoomControlsProps) => {
@@ -150,6 +105,7 @@ const RoomControls = ({
   };
 
   const [similarItems, setSimilarItems] = useState([]);
+  const [isModalOpen, setModalOpen] = useState<boolean>(false);
 
   const currentPosition = getFurniturePosition();
 
@@ -162,28 +118,38 @@ const RoomControls = ({
     return dislikedFurniture.includes(itemId);
   };
 
-  const getSimilarItems = async () => {
-    const similarItems = await fetch(`${API_URL}/get-similar-items?item_id=${selectedFurniture?.item_id}`,
-      {
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ liked_items: likedFurniture, disliked_items: dislikedFurniture }),
-        method: 'POST'
-      }
-    );
-    const data = await similarItems.json();
-    console.log(data);
-    setSimilarItems(data);
-  };
-
   // Function to replace selected furniture with a similar item
   const replaceFurnitureWithSimilarItem = (similarItem: any) => {
     if (!selectedFurniture || !design) return;
     
-    // Use the parent component's handler to replace the furniture
-    if (onReplaceFurniture) {
-      onReplaceFurniture(selectedFurniture.item_id, similarItem);
+    // Create a copy of the design
+    const updatedDesign = { ...design };
+    
+    // Find the index of the selected furniture
+    const itemIndex = updatedDesign.items.findIndex(
+      item => item.item_id === selectedFurniture.item_id
+    );
+    
+    if (itemIndex !== -1) {
+      // Create a new item with the similar item's ID but keep the position and orientation
+      const replacementItem = {
+        ...updatedDesign.items[itemIndex],
+        item_id: similarItem.item_id,
+        object: similarItem.description || similarItem.object || updatedDesign.items[itemIndex].object
+      };
+      
+      // Replace the item in the design
+      updatedDesign.items[itemIndex] = replacementItem;
+      
+      // Update the design in the parent component
+      // We need to force a re-render of the entire design
+      const event = new CustomEvent('design-updated', { 
+        detail: { design: updatedDesign } 
+      });
+      window.dispatchEvent(event);
+      
+      // Update the selected furniture to the new item
+      onFurnitureSelect?.(replacementItem);
       
       // Close the similar items list
       setSimilarItems([]);
@@ -232,6 +198,25 @@ const RoomControls = ({
       onLikeFurniture(itemId);
     }
   };
+
+  const handlePromptConfirm = () => {
+    // User confirms prompt; show the search modal.
+    setModalOpen(true);
+    setShowPrompt(false);
+  };
+
+  const handleCloseModal = () => {
+    setModalOpen(false);
+  };
+
+  const query_object : QueryObject = {
+    material: "",
+    style: "",
+    name: "",
+    keywords: "",
+    user_query: ""
+  }
+
 
   return (
     <div className="room-controls">
@@ -317,36 +302,23 @@ const RoomControls = ({
               </>
             )}
           </div>
-          <hr />
-          {isItemDisliked(selectedFurniture.item_id) &&
-            <>
-              <button className="generate-button" onClick={getSimilarItems}>Get Similar Items</button>
-              {similarItems.length > 0 && (
-                <div className="similar-items-list">
-                  <h4>Similar Items</h4>
-                  <ul>
-                    {similarItems.map((item: any) => (
-                      <div 
-                        className="furniture-details" 
-                        key={item.item_id}
-                        onClick={() => replaceFurnitureWithSimilarItem(item)}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <div className="similar-item">
-                          <div className="thumbnail-container">
-                            <ModelThumbnail imageId={item.image_id} />
-                          </div>
-                          <div className="item-info">
-                            <li>{item.item_id} - {item.description}</li>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </>
-          }
+          {showPrompt && (
+            <div className="prompt">
+              <p style={{fontStyle: "oblique"}}>Would you like to search for your favourite object?</p>
+              <button onClick={handlePromptConfirm} style={{"margin": "10px 0"}}>
+                Yes, show me the search!
+              </button>
+            </div>
+          )}
+          <SearchModal
+              isOpen={isModalOpen}
+              onClose={handleCloseModal}
+              query_object={query_object}
+              selectedItemId={selectedFurniture.item_id}
+              likedFurniture={likedFurniture}
+              dislikedFurniture={dislikedFurniture}
+              currentScene={[]}
+              replaceFurniture={replaceFurnitureWithSimilarItem}/>
         </div>
       )}
 

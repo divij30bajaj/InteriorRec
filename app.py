@@ -60,17 +60,14 @@ class DesignResponse(BaseModel):
 
 class QueryObject(BaseModel):
     material: str
+    name: str
     style: str
-    key_items: str
     keywords: str
-    user_conversation: str
+    user_query: str
 
 class RetrievalQuery(BaseModel):
     query_object: QueryObject
     k: int = 10
-
-class RetrievalResponse(BaseModel):
-    items: List[Dict[str, float]]
 
 class SimilarItem(BaseModel):
     item_id: str
@@ -273,7 +270,7 @@ def create_room_grid_image(room_spec: RoomSpec) -> BytesIO:
     img_io.seek(0)
     return img_io
 
-@app.post("/retrieve-items", response_model=RetrievalResponse)
+@app.post("/retrieve-items", response_model=List[SimilarItem])
 async def retrieve_items(query: RetrievalQuery):
     try:
         # Get results using the query object
@@ -282,10 +279,7 @@ async def retrieve_items(query: RetrievalQuery):
             k=query.k
         )
         
-        # Format results
-        items = [{"item_id": item_id, "score": score} for item_id, score in results]
-        
-        return {"items": items}
+        return results
         
     except RateLimitError as e:
         print(f"Rate limit reached: {e}")

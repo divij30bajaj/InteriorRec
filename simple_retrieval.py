@@ -25,6 +25,13 @@ class SimpleRetrieval:
         self.client = OpenAI(api_key=OPENAI_API_KEY)
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
+        with open("embedded_data.json", "r") as f:
+            data = json.load(f)
+            self.data_map = {item["item_id"]: item for item in data}
+
+        with open("mapping_3d_spins.json", "r") as f:
+            self.image_mapping = json.load(f)
+
     async def process_query(self, query_object: Dict[str, str]) -> Tuple[str, str]:
         """Process the query object and generate boolean query and description"""
         try:
@@ -124,7 +131,7 @@ class SimpleRetrieval:
             print(f"Error getting embedding: {e}")
             raise
 
-    async def retrieve_with_query_object(self, query_object: Dict[str, str], k: int = 10) -> List[Tuple[str, float]]:
+    async def retrieve_with_query_object(self, query_object: Dict[str, str], k: int = 10) -> List[Dict[str, str]]:
         """Process query object and retrieve results"""
         try:
             # Generate boolean query and description
@@ -142,7 +149,13 @@ class SimpleRetrieval:
             results = [(str(result[0]), result[1]) for result in results]
             results = sorted(results, key=lambda item: item[1], reverse=True)
 
-            return results
+            final_results = []
+            for item_id, _ in results:
+                item_description = self.data_map[item_id]["description"]
+                image_id = self.image_mapping[item_id] if item_id in self.image_mapping else None
+                final_results.append({"item_id": item_id, "description": item_description, "image_id": image_id})
+
+            return final_results
 
         except Exception as e:
             print(f"Error in retrieval: {e}")

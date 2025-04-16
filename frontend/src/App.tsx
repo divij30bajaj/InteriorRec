@@ -24,6 +24,7 @@ function App() {
   const [selectedFurniture, setSelectedFurniture] = useState<DesignItem | null>(null)
   const [likedFurniture, setLikedFurniture] = useState<string[]>([])
   const [dislikedFurniture, setDislikedFurniture] = useState<string[]>([])
+  const [showPrompt, setShowPrompt] = useState<boolean>(false);
 
   const handleAddDoor = (door: DoorWindow) => {
     setDoors([...doors, door])
@@ -80,6 +81,7 @@ function App() {
 
   const handleDislikeFurniture = (itemId: string) => {
     console.log("handleDislikeFurniture itemId: ", itemId)
+    setShowPrompt(true);
     setDislikedFurniture([...dislikedFurniture, itemId])
   }   
 
@@ -93,13 +95,13 @@ function App() {
     if (design) {
       // Find the item to be replaced
       const itemToReplace = design.items.find(item => item.item_id === oldItemId);
-      
+
       if (!itemToReplace) return;
       handleLikeFurniture(newItem.item_id)
-      
+
       // Create a deep copy of the current design to avoid side effects
       const updatedDesign: RoomDesign = JSON.parse(JSON.stringify(design));
-      
+
       // Replace just the specific item
       const itemIndex = updatedDesign.items.findIndex(item => item.item_id === oldItemId);
       if (itemIndex !== -1) {
@@ -109,17 +111,17 @@ function App() {
           item_id: newItem.item_id,
           object: newItem.description || newItem.object || updatedDesign.items[itemIndex].object
         };
-        
+
         // Update the design state with the completely new object
         setDesign(updatedDesign);
-        
+
         // Update the selected furniture if it was the one replaced
         if (selectedFurniture && selectedFurniture.item_id === oldItemId) {
           // Create a new reference for the selected furniture
           const updatedSelectedItem = {
             ...updatedDesign.items[itemIndex]
           };
-          
+
           // Clear and then set the selected furniture
           setSelectedFurniture(null);
           setTimeout(() => {
@@ -232,6 +234,8 @@ function App() {
               likedFurniture={likedFurniture}
               dislikedFurniture={dislikedFurniture}
               onReplaceFurniture={handleReplaceFurniture}
+              setShowPrompt={setShowPrompt}
+              showPrompt={showPrompt}
             />
           </div>
         </div>
