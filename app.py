@@ -373,10 +373,6 @@ async def generate_design(room_spec: RoomSpec):
         
         return {"items": items, "wallColor": wall_color}
 
-    except RateLimitError as e:
-        print(f"Rate limit reached: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached. Please try again later.")
     except Exception as e:
         print(e)
         traceback.print_exc()
@@ -391,10 +387,6 @@ async def get_similar_items(item_id: str, liked_items: List[str], disliked_items
         items = await retriever.get_similar_items(item_id, liked_items, disliked_items)
         print("get-similar-items", items)
         return [item for item in items if item["item_id"] != item_id]
-    except RateLimitError as e:
-        print(f"Rate limit reached: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached. Please try again later.")
     except Exception as e:
         print(e)
         traceback.print_exc()
@@ -406,10 +398,17 @@ async def get_similar_items_with_scene(item_id: str, liked_items: List[str], dis
         items = await retriever.get_similar_items_with_scene(item_id, liked_items, disliked_items, scene_items, retrieval_system.index)
         print("get-similar-items-with-scene", items)
         return [item for item in items if item["item_id"] != item_id]
-    except RateLimitError as e:
-        print(f"Rate limit reached: {e}")
+    except Exception as e:
+        print(e)
         traceback.print_exc()
-        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached. Please try again later.")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/scene-goes-with-it", response_model=List[List[SimilarItem]])
+async def goes_with_it(item_id: str, liked_items: List[str], disliked_items: List[str], scene_items: List[str]):
+    try:
+        items = await retriever.goes_with_it(item_id, liked_items, disliked_items, scene_items)
+        print("goes-with-it", items)
+        return items
     except Exception as e:
         print(e)
         traceback.print_exc()
@@ -436,32 +435,3 @@ async def s3_proxy(item_id: str):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching model: {str(e)}")
-
-@app.get("/s3-proxy/{item_id}/thumbnail")
-async def s3_proxy_thumbnail(item_id: str):
-    """
-    Proxy endpoint to fetch thumbnail images for 3D models from S3 bucket and handle CORS.
-    """
-    # Try to get thumbnail from S3 with different extensions
-    extensions = ['jpg', 'png', 'jpeg']
-    
-    for ext in extensions:
-        s3_url = f"https://interior-data.s3.amazonaws.com/thumbnails/{item_id}.{ext}"
-        try:
-            response = await asyncio.to_thread(requests.get, s3_url)
-            if response.status_code == 200:
-                # Determine content type based on extension
-                content_type = f"image/{ext}"
-                if ext == 'jpg':
-                    content_type = "image/jpeg"
-                
-                # Return the content with appropriate headers
-                return Response(
-                    content=response.content,
-                    media_type=content_type
-                )
-        except Exception:
-            continue
-    
-    # If no thumbnail found with any extension, return a 404
-    raise HTTPException(status_code=404, detail="Thumbnail not found")

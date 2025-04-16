@@ -11,7 +11,7 @@ import tqdm
 from PIL import Image
 
 from model import Model
-from retriever import simple_retriever
+from retriever import retrieve
 from utils import extract_info
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
@@ -218,7 +218,7 @@ class Designer:
         for i, obj in tqdm.tqdm(enumerate(self.list_of_objects)):
             name = obj["name"]
             description = obj["description"]
-            retrieved_object = await simple_retriever(description)
+            retrieved_object = await retrieve(description)
             retrieved_object = retrieved_object[0][0]
 
             # Convert dimensions from inches to grid cells (12 inches = 1 foot = 1 cell)
