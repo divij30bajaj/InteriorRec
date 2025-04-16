@@ -22,6 +22,8 @@ function App() {
   const [design, setDesign] = useState<RoomDesign | undefined>(undefined)
   const [designOptions, setDesignOptions] = useState<RoomDesign[] | undefined>(undefined)
   const [selectedFurniture, setSelectedFurniture] = useState<DesignItem | null>(null)
+  const [likedFurniture, setLikedFurniture] = useState<string[]>([])
+  const [dislikedFurniture, setDislikedFurniture] = useState<string[]>([])
 
   const handleAddDoor = (door: DoorWindow) => {
     setDoors([...doors, door])
@@ -75,6 +77,17 @@ function App() {
   const handleUnselectFurniture = () => {
     setSelectedFurniture(null);
   };
+
+  const handleDislikeFurniture = (itemId: string) => {
+    console.log("handleDislikeFurniture itemId: ", itemId)
+    setDislikedFurniture([...dislikedFurniture, itemId])
+  }   
+
+  const handleLikeFurniture = (itemId: string) => {
+    console.log("handleLikeFurniture itemId: ", itemId)
+    setLikedFurniture([...likedFurniture, itemId])
+  }
+  
 
   const handleSelectDesign = (index: number) => {
     if (designOptions && designOptions.length > index) {
@@ -171,8 +184,12 @@ function App() {
               onFurniturePositionChange={handleFurniturePositionChange}
               design={design}
               onUnselectFurniture={handleUnselectFurniture}
+              onDislikeFurniture={handleDislikeFurniture}
+              onLikeFurniture={handleLikeFurniture}
               designOptions={designOptions}
               onSelectDesign={handleSelectDesign}
+              likedFurniture={likedFurniture}
+              dislikedFurniture={dislikedFurniture}
             />
           </div>
         </div>

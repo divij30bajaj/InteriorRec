@@ -23,100 +23,42 @@ interface RoomControlsProps {
   onFurniturePositionChange?: (itemId: string, position: [number, number, number]) => void;
   design: RoomDesign | undefined;
   onUnselectFurniture?: () => void;
+  onDislikeFurniture?: (itemId: string) => void;
+  onLikeFurniture?: (itemId: string) => void;
   designOptions?: RoomDesign[];
   onSelectDesign?: (index: number) => void;
+  likedFurniture?: string[];
+  dislikedFurniture?: string[];
+  onFurnitureSelect?: (item: DesignItem | null) => void;
 }
 
 // Model thumbnail component
-const ModelThumbnail = ({ itemId }: { itemId: string }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+const ModelThumbnail = ({ imageId }: { imageId: string }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  
+  const imgRef = useRef<HTMLImageElement>(null);
+
   useEffect(() => {
-    if (!canvasRef.current) return;
-    
-    // Set up scene
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf1f3f5);
-    
-    // Set up camera
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
-    camera.position.z = 1.5;
-    camera.position.y = 0.5;
-    
-    // Set up renderer
-    const renderer = new THREE.WebGLRenderer({
-      canvas: canvasRef.current,
-      antialias: true,
-    });
-    renderer.setSize(80, 80);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    
-    // Add lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambientLight);
-    
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(5, 5, 5);
-    scene.add(directionalLight);
-    
-    // Load model
-    const loader = new GLTFLoader();
-    const modelUrl = `http://127.0.0.1:5000/s3-proxy/${itemId}`;
-    
-    loader.load(
-      modelUrl,
-      (gltf) => {
-        // Center and scale model to fit view
-        const box = new THREE.Box3().setFromObject(gltf.scene);
-        const center = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
-        
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const scale = 1 / maxDim;
-        
-        gltf.scene.position.x = -center.x * scale;
-        gltf.scene.position.y = -center.y * scale;
-        gltf.scene.position.z = -center.z * scale;
-        gltf.scene.scale.multiplyScalar(scale);
-        
-        scene.add(gltf.scene);
-        
-        // Add orbit controls for a bit of movement
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.minDistance = 1;
-        controls.maxDistance = 3;
-        controls.autoRotate = true;
-        controls.autoRotateSpeed = 3;
-        
-        // Animation loop
-        const animate = () => {
-          requestAnimationFrame(animate);
-          controls.update();
-          renderer.render(scene, camera);
-        };
-        
-        animate();
-        setLoading(false);
-      },
-      undefined,
-      (error) => {
-        console.error(`Error loading model thumbnail: ${error}`);
-        setError(true);
-        setLoading(false);
-      }
-    );
-    
-    // Cleanup
-    return () => {
-      renderer.dispose();
-      scene.clear();
+    if (!imageId) {
+      setError(true);
+      setLoading(false);
+      return;
+    }
+    const handleLoad = () => {
+      setLoading(false);
     };
-  }, [itemId]);
-  
+    const handleError = () => {
+      console.error(`Error loading image thumbnail: ${imageId}`);
+      setError(true);
+      setLoading(false);
+    };
+    if (imgRef.current) {
+      imgRef.current.onload = handleLoad;
+      imgRef.current.onerror = handleError;
+    }
+
+  }, [imageId]);
+
   if (error) {
     return (
       <div className="thumbnail-placeholder">
@@ -124,11 +66,26 @@ const ModelThumbnail = ({ itemId }: { itemId: string }) => {
       </div>
     );
   }
-  
+
+  // Get first two characters of the imageId for the folder structure
+  const prefix = imageId ? imageId.substring(0, 2) : '';
+  const imageUrl = `https://amazon-berkeley-objects.s3.amazonaws.com/spins/original/${prefix}/${imageId}/${imageId}_01.jpg`;
+
   return (
     <>
       {loading && <div className="thumbnail-loading">Loading...</div>}
-      <canvas ref={canvasRef} className="model-thumbnail" />
+      <img 
+        ref={imgRef}
+        className="model-thumbnail" 
+        src={imageUrl} 
+        alt={`Thumbnail for ${imageId}`}
+        style={{ width: '80px', height: '80px', objectFit: 'cover' }}
+        onLoad={() => setLoading(false)}
+        onError={() => {
+          setError(true);
+          setLoading(false);
+        }}
+      />
     </>
   );
 };
@@ -151,8 +108,13 @@ const RoomControls = ({
   onFurniturePositionChange,
   design,
   onUnselectFurniture,
+  onDislikeFurniture,
+  onLikeFurniture,
   designOptions,
-  onSelectDesign
+  onSelectDesign,
+  likedFurniture = [],
+  dislikedFurniture = [],
+  onFurnitureSelect
 }: RoomControlsProps) => {
   const [newDoor, setNewDoor] = useState<DoorWindow>({
     wall: 'north',
@@ -171,25 +133,33 @@ const RoomControls = ({
   // Calculate current position for selected furniture
   const getFurniturePosition = (): [number, number, number] | null => {
     if (!selectedFurniture) return null;
-    
+
     // Calculate center position of the furniture
     const centerX = (selectedFurniture.start[1] + selectedFurniture.end[1]) / 2;
     const centerY = (selectedFurniture.start[0] + selectedFurniture.end[0]) / 2;
-    
+
     // Convert to world coordinates
     const halfLength = roomLength / 2;
     const halfWidth = roomWidth / 2;
-    
+
     const x = centerX - halfLength;
     const z = centerY - halfWidth;
-    
+
     return [x, 0, z];
   };
 
   const [similarItems, setSimilarItems] = useState([]);
-    
+
   const currentPosition = getFurniturePosition();
 
+  // Helper functions to check if an item is liked or disliked
+  const isItemLiked = (itemId: string): boolean => {
+    return likedFurniture.includes(itemId);
+  };
+
+  const isItemDisliked = (itemId: string): boolean => {
+    return dislikedFurniture.includes(itemId);
+  };
 
   const getSimilarItems = async () => {
     const similarItems = await fetch(`${API_URL}/get-similar-items?item_id=${selectedFurniture?.item_id}`,
@@ -197,24 +167,63 @@ const RoomControls = ({
         headers: {
           'Content-Type': 'application/json'
         },
-        method: 'GET'
+        body: JSON.stringify({ liked_items: likedFurniture, disliked_items: dislikedFurniture }),
+        method: 'POST'
       }
     );
     const data = await similarItems.json();
     console.log(data);
     setSimilarItems(data);
   };
-  
+
+  // Function to replace selected furniture with a similar item
+  const replaceFurnitureWithSimilarItem = (similarItem: any) => {
+    if (!selectedFurniture || !design) return;
+    
+    // Create a copy of the design
+    const updatedDesign = { ...design };
+    
+    // Find the index of the selected furniture
+    const itemIndex = updatedDesign.items.findIndex(
+      item => item.item_id === selectedFurniture.item_id
+    );
+    
+    if (itemIndex !== -1) {
+      // Create a new item with the similar item's ID but keep the position and orientation
+      const replacementItem = {
+        ...updatedDesign.items[itemIndex],
+        item_id: similarItem.item_id,
+        object: similarItem.description || similarItem.object || updatedDesign.items[itemIndex].object
+      };
+      
+      // Replace the item in the design
+      updatedDesign.items[itemIndex] = replacementItem;
+      
+      // Update the design in the parent component
+      // We need to force a re-render of the entire design
+      const event = new CustomEvent('design-updated', { 
+        detail: { design: updatedDesign } 
+      });
+      window.dispatchEvent(event);
+      
+      // Update the selected furniture to the new item
+      onFurnitureSelect?.(replacementItem);
+      
+      // Close the similar items list
+      setSimilarItems([]);
+    }
+  };
+
   const handlePositionChange = (axis: 'x' | 'z', value: number) => {
     if (selectedFurniture && onFurniturePositionChange && currentPosition) {
       const newPosition: [number, number, number] = [...currentPosition];
-      
+
       if (axis === 'x') {
         newPosition[0] = value;
       } else if (axis === 'z') {
         newPosition[2] = value;
       }
-      
+
       onFurniturePositionChange(selectedFurniture.item_id, newPosition);
     }
   };
@@ -231,6 +240,23 @@ const RoomControls = ({
     setNewWindow({ ...newWindow, position: 0.5 });
   };
 
+  // Handle like/dislike actions
+  const handleLikeToggle = (itemId: string) => {
+    if (onLikeFurniture && !isItemLiked(itemId)) {
+      onLikeFurniture(itemId);
+    } else if (onDislikeFurniture && isItemLiked(itemId)) {
+      onDislikeFurniture(itemId);
+    }
+  };
+
+  const handleDislikeToggle = (itemId: string) => {
+    if (onDislikeFurniture && !isItemDisliked(itemId)) {
+      onDislikeFurniture(itemId);
+    } else if (onLikeFurniture && isItemDisliked(itemId)) {
+      onLikeFurniture(itemId);
+    }
+  };
+
   return (
     <div className="room-controls">
       {/* Selected Furniture Details */}
@@ -242,11 +268,11 @@ const RoomControls = ({
             <p><strong>Object Type:</strong> {selectedFurniture.object}</p>
             <p><strong>Position:</strong> ({selectedFurniture.start[0].toFixed(1)}, {selectedFurniture.start[1].toFixed(1)})</p>
             <p><strong>Size:</strong> {Math.abs(selectedFurniture.end[0] - selectedFurniture.start[0]).toFixed(1)} x {Math.abs(selectedFurniture.end[1] - selectedFurniture.start[1]).toFixed(1)}</p>
-            
+
             {/* Position Controls */}
             <div className="position-controls">
               <h4>Adjust Position</h4>
-              
+
               {/* X Position */}
               <div className="control-group">
                 <label htmlFor="furniture-position-x">X Position (Left/Right)</label>
@@ -254,8 +280,8 @@ const RoomControls = ({
                   <input
                     type="range"
                     id="furniture-position-x"
-                    min={-roomLength/2 + 1}
-                    max={roomLength/2 - 1}
+                    min={-roomLength / 2 + 1}
+                    max={roomLength / 2 - 1}
                     step="0.5"
                     value={currentPosition ? currentPosition[0] : 0}
                     onChange={(e) => handlePositionChange('x', parseFloat(e.target.value))}
@@ -263,7 +289,7 @@ const RoomControls = ({
                   <span>{currentPosition ? currentPosition[0].toFixed(1) : 0}</span>
                 </div>
               </div>
-              
+
               {/* Z Position */}
               <div className="control-group">
                 <label htmlFor="furniture-position-z">Z Position (Forward/Back)</label>
@@ -271,8 +297,8 @@ const RoomControls = ({
                   <input
                     type="range"
                     id="furniture-position-z"
-                    min={-roomWidth/2 + 1}
-                    max={roomWidth/2 - 1}
+                    min={-roomWidth / 2 + 1}
+                    max={roomWidth / 2 - 1}
                     step="0.5"
                     value={currentPosition ? currentPosition[2] : 0}
                     onChange={(e) => handlePositionChange('z', parseFloat(e.target.value))}
@@ -283,27 +309,68 @@ const RoomControls = ({
             </div>
           </div>
           <button className="unselect-button" onClick={onUnselectFurniture}>Unselect</button>
-          <hr/>
-          <button className="generate-button" onClick={getSimilarItems}>Get Similar Items</button>
-          {similarItems.length > 0 && (
-            <div className="similar-items-list">
-              <h4>Similar Items</h4>
-              <ul>
-                {similarItems.map((item: any) => (
-                  <div className="furniture-details" key={item.item_id}>
-                    <div className="similar-item">
-                      <div className="thumbnail-container">
-                        <ModelThumbnail itemId={item.item_id} />
+          <div className="button-group">
+            {isItemLiked(selectedFurniture.item_id) ? (
+              <button
+                className="liked-button"
+                onClick={() => handleDislikeToggle(selectedFurniture.item_id)}
+              >
+                Liked ✓
+              </button>
+            ) : isItemDisliked(selectedFurniture.item_id) ? (
+              <button
+                className="disliked-button"
+                onClick={() => handleLikeToggle(selectedFurniture.item_id)}
+              >
+                Disliked ✗
+              </button>
+            ) : (
+              <>
+                <button
+                  className="dislike-button"
+                  onClick={() => onDislikeFurniture?.(selectedFurniture.item_id)}
+                >
+                  Dislike
+                </button>
+                <button
+                  className="like-button"
+                  onClick={() => onLikeFurniture?.(selectedFurniture.item_id)}
+                >
+                  Like
+                </button>
+              </>
+            )}
+          </div>
+          <hr />
+          {isItemDisliked(selectedFurniture.item_id) &&
+            <>
+              <button className="generate-button" onClick={getSimilarItems}>Get Similar Items</button>
+              {similarItems.length > 0 && (
+                <div className="similar-items-list">
+                  <h4>Similar Items</h4>
+                  <ul>
+                    {similarItems.map((item: any) => (
+                      <div 
+                        className="furniture-details" 
+                        key={item.item_id}
+                        onClick={() => replaceFurnitureWithSimilarItem(item)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <div className="similar-item">
+                          <div className="thumbnail-container">
+                            <ModelThumbnail imageId={item.image_id} />
+                          </div>
+                          <div className="item-info">
+                            <li>{item.item_id} - {item.description}</li>
+                          </div>
+                        </div>
                       </div>
-                      <div className="item-info">
-                        <li>{item.item_id} - {item.description}</li>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </ul>
-            </div>
-          )}
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          }
         </div>
       )}
 
@@ -312,7 +379,7 @@ const RoomControls = ({
           <h3>Click on a furniture to select it!</h3>
         </div>
       )}
-      
+
       {!design && (
         <>
         <div className="control-section">
@@ -326,148 +393,148 @@ const RoomControls = ({
             <option value="diningRoom">Dining Room</option>
           </select>
         </div>
-        <div className="control-section">
-          <h3>Room Dimensions</h3>
-          <div className="control-group">
-            <label htmlFor="length">Length of room</label>
-            <div className="slider-container">
-              <input
-                type="range"
-                id="length"
-                min="6"
-                max="30"
-                step="0.5"
-                value={roomLength}
-                onChange={(e) => onRoomLengthChange(parseFloat(e.target.value))}
-              />
-              <span>{roomLength.toFixed(1)}ft</span>
-            </div>
-          </div>
-          
-          <div className="control-group">
-            <label htmlFor="width">Width of room</label>
-            <div className="slider-container">
-              <input
-                type="range"
-                id="width"
-                min="6"
-                max="30"
-                step="0.5"
-                value={roomWidth}
-                onChange={(e) => onRoomWidthChange(parseFloat(e.target.value))}
-              />
-              <span>{roomWidth.toFixed(1)}ft</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="control-section">
-          <h3>Add Doors/Windows</h3>
-          
-          {/* Door Controls */}
-          <div className="element-controls">
-            <h4>Add Door</h4>
+          <div className="control-section">
+            <h3>Room Dimensions</h3>
             <div className="control-group">
-              <label htmlFor="door-wall">Wall</label>
-              <select
-                id="door-wall"
-                value={newDoor.wall}
-                onChange={(e) => setNewDoor({ ...newDoor, wall: e.target.value as 'north' | 'east' | 'south' | 'west' })}
-              >
-                <option value="north">North</option>
-                <option value="east">East</option>
-                <option value="south">South</option>
-                <option value="west">West</option>
-              </select>
-            </div>
-            
-            <div className="control-group">
-              <label htmlFor="door-position">Position</label>
+              <label htmlFor="length">Length of room</label>
               <div className="slider-container">
                 <input
                   type="range"
-                  id="door-position"
-                  min="0.1"
-                  max="0.9"
-                  step="0.05"
-                  value={newDoor.position}
-                  onChange={(e) => setNewDoor({ ...newDoor, position: parseFloat(e.target.value) })}
-                />
-                <span>{(newDoor.position * 100).toFixed(0)}%</span>
-              </div>
-            </div>
-            
-            <div className="control-group">
-              <label htmlFor="door-width">Width</label>
-              <div className="slider-container">
-                <input
-                  type="range"
-                  id="door-width"
-                  min="2"
-                  max="6"
+                  id="length"
+                  min="6"
+                  max="30"
                   step="0.5"
-                  value={newDoor.width}
-                  onChange={(e) => setNewDoor({ ...newDoor, width: parseFloat(e.target.value) })}
+                  value={roomLength}
+                  onChange={(e) => onRoomLengthChange(parseFloat(e.target.value))}
                 />
-                <span>{newDoor.width.toFixed(1)}ft</span>
+                <span>{roomLength.toFixed(1)}ft</span>
               </div>
             </div>
-            
-            <button className="add-button" onClick={handleAddDoor}>Add Door</button>
+
+            <div className="control-group">
+              <label htmlFor="width">Width of room</label>
+              <div className="slider-container">
+                <input
+                  type="range"
+                  id="width"
+                  min="6"
+                  max="30"
+                  step="0.5"
+                  value={roomWidth}
+                  onChange={(e) => onRoomWidthChange(parseFloat(e.target.value))}
+                />
+                <span>{roomWidth.toFixed(1)}ft</span>
+              </div>
+            </div>
           </div>
 
-          {/* Window Controls */}
-          <div className="element-controls">
-            <h4>Add Window</h4>
-            <div className="control-group">
-              <label htmlFor="window-wall">Wall</label>
-              <select
-                id="window-wall"
-                value={newWindow.wall}
-                onChange={(e) => setNewWindow({ ...newWindow, wall: e.target.value as 'north' | 'east' | 'south' | 'west' })}
-              >
-                <option value="north">North</option>
-                <option value="east">East</option>
-                <option value="south">South</option>
-                <option value="west">West</option>
-              </select>
-            </div>
-            
-            <div className="control-group">
-              <label htmlFor="window-position">Position</label>
-              <div className="slider-container">
-                <input
-                  type="range"
-                  id="window-position"
-                  min="0.1"
-                  max="0.9"
-                  step="0.05"
-                  value={newWindow.position}
-                  onChange={(e) => setNewWindow({ ...newWindow, position: parseFloat(e.target.value) })}
-                />
-                <span>{(newWindow.position * 100).toFixed(0)}%</span>
+          <div className="control-section">
+            <h3>Add Doors/Windows</h3>
+
+            {/* Door Controls */}
+            <div className="element-controls">
+              <h4>Add Door</h4>
+              <div className="control-group">
+                <label htmlFor="door-wall">Wall</label>
+                <select
+                  id="door-wall"
+                  value={newDoor.wall}
+                  onChange={(e) => setNewDoor({ ...newDoor, wall: e.target.value as 'north' | 'east' | 'south' | 'west' })}
+                >
+                  <option value="north">North</option>
+                  <option value="east">East</option>
+                  <option value="south">South</option>
+                  <option value="west">West</option>
+                </select>
               </div>
-            </div>
-            
-            <div className="control-group">
-              <label htmlFor="window-width">Width</label>
-              <div className="slider-container">
-                <input
-                  type="range"
-                  id="window-width"
-                  min="2"
-                  max="6"
-                  step="0.5"
-                  value={newWindow.width}
-                  onChange={(e) => setNewWindow({ ...newWindow, width: parseFloat(e.target.value) })}
-                />
-                <span>{newWindow.width.toFixed(1)}ft</span>
+
+              <div className="control-group">
+                <label htmlFor="door-position">Position</label>
+                <div className="slider-container">
+                  <input
+                    type="range"
+                    id="door-position"
+                    min="0.1"
+                    max="0.9"
+                    step="0.05"
+                    value={newDoor.position}
+                    onChange={(e) => setNewDoor({ ...newDoor, position: parseFloat(e.target.value) })}
+                  />
+                  <span>{(newDoor.position * 100).toFixed(0)}%</span>
+                </div>
               </div>
+
+              <div className="control-group">
+                <label htmlFor="door-width">Width</label>
+                <div className="slider-container">
+                  <input
+                    type="range"
+                    id="door-width"
+                    min="2"
+                    max="6"
+                    step="0.5"
+                    value={newDoor.width}
+                    onChange={(e) => setNewDoor({ ...newDoor, width: parseFloat(e.target.value) })}
+                  />
+                  <span>{newDoor.width.toFixed(1)}ft</span>
+                </div>
+              </div>
+
+              <button className="add-button" onClick={handleAddDoor}>Add Door</button>
             </div>
-            
-            <button className="add-button" onClick={handleAddWindow}>Add Window</button>
+
+            {/* Window Controls */}
+            <div className="element-controls">
+              <h4>Add Window</h4>
+              <div className="control-group">
+                <label htmlFor="window-wall">Wall</label>
+                <select
+                  id="window-wall"
+                  value={newWindow.wall}
+                  onChange={(e) => setNewWindow({ ...newWindow, wall: e.target.value as 'north' | 'east' | 'south' | 'west' })}
+                >
+                  <option value="north">North</option>
+                  <option value="east">East</option>
+                  <option value="south">South</option>
+                  <option value="west">West</option>
+                </select>
+              </div>
+
+              <div className="control-group">
+                <label htmlFor="window-position">Position</label>
+                <div className="slider-container">
+                  <input
+                    type="range"
+                    id="window-position"
+                    min="0.1"
+                    max="0.9"
+                    step="0.05"
+                    value={newWindow.position}
+                    onChange={(e) => setNewWindow({ ...newWindow, position: parseFloat(e.target.value) })}
+                  />
+                  <span>{(newWindow.position * 100).toFixed(0)}%</span>
+                </div>
+              </div>
+
+              <div className="control-group">
+                <label htmlFor="window-width">Width</label>
+                <div className="slider-container">
+                  <input
+                    type="range"
+                    id="window-width"
+                    min="2"
+                    max="6"
+                    step="0.5"
+                    value={newWindow.width}
+                    onChange={(e) => setNewWindow({ ...newWindow, width: parseFloat(e.target.value) })}
+                  />
+                  <span>{newWindow.width.toFixed(1)}ft</span>
+                </div>
+              </div>
+
+              <button className="add-button" onClick={handleAddWindow}>Add Window</button>
+            </div>
           </div>
-        </div>
 
         {/* Lists of added doors and windows */}
         <div className="elements-list">
@@ -504,10 +571,10 @@ const RoomControls = ({
           </div>
         </div>
 
-        <button className="generate-button" onClick={onSubmit}>Generate</button>
+          <button className="generate-button" onClick={onSubmit}>Generate</button>
         </>
       )}
-      
+
       {designOptions && designOptions.length > 0 && (
         <div className="design-options">
           <h3>Select a Design Style</h3>
