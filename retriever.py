@@ -1,5 +1,6 @@
 import itertools
 import json
+import random
 
 import torch
 from sentence_transformers import SentenceTransformer, util
@@ -84,11 +85,20 @@ async def get_similar_items_with_scene(item_id: str, liked_items: list[str] = []
             index_items.extend(index[keyword])
     if len(index_items) == 0:
         return []
-    print(item_keywords, index_items)
+    # print(item_keywords, index_items)
     index_items_embeddings = torch.tensor([data_map[item]["embedding"] for item in index_items])
 
     query_embedding = torch.mean(torch.stack([torch.tensor(data_map[item]["embedding"]) for item in scene_items]), dim=0)
-    results = await simple_retriever(query_embedding, index_items_embeddings, 10)
+    # results = await simple_retriever(query_embedding, index_items_embeddings, 10)
+    hits = util.semantic_search(query_embedding, index_items_embeddings, top_k=10)
+    hits = hits[0]
+    
+    results = []
+    for hit in hits:
+        idx = hit['corpus_id']  # index of the stored item
+        score = hit['score']
+        if score < 0.99:
+            results.append((data_map[index_items[idx]], score))
     reranked_items = await rerank_items(results, liked_items, disliked_items)
     return [{
                 "item_id": item[0]["item_id"],
@@ -118,14 +128,18 @@ async def goes_with_it(item_id: str, liked_items: list[str] = [], disliked_items
                 if data_map[item_id]["item_id"] in image_mapping else None
             }
     print(item_data)
-    hits = util.semantic_search(item_embedding, scene_embeddings, top_k=5)
+    hits = util.semantic_search(item_embedding, scene_embeddings, top_k=10)
     hits = hits[0]
     
-    results = []
+    sample_scores = []
     for hit in hits:
         idx = hit['corpus_id']  # index of the stored item
         score = hit['score']
-        print(scenes[idx])
+        sample_scores.append((idx, score))
+    random_sample = random.sample(sample_scores, 5)
+    random_sample = sorted(random_sample, key=lambda x: x[1], reverse=True)
+    results = []
+    for idx, _ in random_sample:
         results.append([{
                 "item_id": data_map[item]["item_id"],
                 "description": data_map[item]["description"],

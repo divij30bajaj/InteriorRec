@@ -385,16 +385,23 @@ textarea {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 15px;
-  margin-top: 10px;
+  margin-top: 20px;
+  gap: 20px;
+  justify-content: center;
+  background: #f9f9f9;
+  border-radius: 10px;
 }
 
 .style-option {
   border: 2px solid #e0e0e0;
   border-radius: 8px;
   padding: 15px;
-  cursor: pointer;
   transition: all 0.3s ease;
   background-color: #f8f9fa;
+  flex: 1;
+  /* min-width: 400px;
+  max-width: 500px; */
+  background: white;
 }
 
 .style-option:hover {
@@ -507,6 +514,7 @@ textarea {
   width: 90%;
   position: relative;
   height: 80vh;
+  overflow: scroll;
 }
 
 /* Close button styles */
@@ -538,4 +546,43 @@ input[type="text"] {
 /* Search results container */
 .search-results {
   margin-top: 10px;
+}
+
+.similar-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  max-height: 80px;
+  overflow: hidden;
+}
+
+.thumbnail-container {
+  flex-shrink: 0;
+  width: 80px;
+  height: 80px;
+  margin-right: 10px;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f8f8f8;
+}
+
+.item-info {
+  flex: 1;
+  overflow: hidden;
+}
+
+.item-info li {
+  list-style: none;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 80px;
+  margin: 0;
+  padding: 0;
 }

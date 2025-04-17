@@ -72,7 +72,7 @@ const ModelThumbnail = ({ imageId }: { imageId: string }) => {
         className="model-thumbnail"
         src={imageUrl}
         alt={`Thumbnail for ${imageId}`}
-        style={{ width: '80px', height: '80px', objectFit: 'cover' }}
+        style={{ width: '80px', height: '80px', objectFit: 'contain' }}
         onLoad={() => setLoading(false)}
         onError={() => {
           setError(true);
@@ -206,7 +206,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, selectedItem
                       <ModelThumbnail imageId={item.image_id} />
                     </div>
                     <div className="item-info">
-                      <li>{item.item_id} - {item.description}</li>
+                      <li>{item.description}</li>
                     </div>
                   </div>
                   </div>
@@ -217,6 +217,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, selectedItem
             !loading && <p>No results found.</p>
           )}
         </div>
+        <hr style={{ width: '100%', margin: '20px 0' }}></hr>
         <div className="similar-items-results">
           <div className="similar-items-results-div">
             {similarItems.length > 0 && (
@@ -236,7 +237,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, selectedItem
                             <ModelThumbnail imageId={item.image_id} />
                           </div>
                           <div className="item-info">
-                            <li>{item.item_id} - {item.description}</li>
+                            <li>{item.description}</li>
                           </div>
                         </div>
                       </div>
@@ -264,7 +265,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, selectedItem
                             <ModelThumbnail imageId={item.image_id} />
                           </div>
                           <div className="item-info">
-                            <li>{item.item_id} - {item.description}</li>
+                            <li>{item.description}</li>
                           </div>
                         </div>
                       </div>

@@ -68,7 +68,7 @@ const ModelThumbnail = ({ imageId }: { imageId: string }) => {
         className="model-thumbnail" 
         src={imageUrl} 
         alt={`Thumbnail for ${imageId}`}
-        style={{ width: '80px', height: '80px', objectFit: 'cover' }}
+        style={{ width: '80px', height: '80px', objectFit: 'contain' }}
         onLoad={() => setLoading(false)}
         onError={() => {
           setError(true);
@@ -342,11 +342,14 @@ function App() {
           </div>
         )}
 
-        {isReplaced && (
+        {isReplaced && suggestedScenes.length > 0 && (
+          <>
+           <h2 style={{marginTop: '10px'}}>You may also like these scenes:</h2>
             <div className={"style-options"}>
-                {suggestedScenes.map((itemList: SearchResult[]) => {
+                {suggestedScenes.map((itemList: SearchResult[], index: number) => {
                   return (
                    <div className="style-option">
+                    <h3>Scene # {index + 1}</h3>
                       {itemList.map((item: SearchResult) => {
                         return (
                           <div className="similar-item">
@@ -354,7 +357,7 @@ function App() {
                               <ModelThumbnail imageId={item.image_id} />
                             </div>
                             <div className="item-info">
-                              <li>{item.item_id} - {item.description}</li>
+                              <li>{item.description.length > 30 ? item.description.substring(0, 30) + '...' : item.description}</li>
                             </div>
                           </div>
                         )
@@ -363,6 +366,7 @@ function App() {
                   )
                 })}
             </div>
+            </>
         )}
       </main>
     </div>
