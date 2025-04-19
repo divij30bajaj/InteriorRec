@@ -21,6 +21,9 @@ type Scene = {
   scene: SearchResult[];
 }
 
+// Array of available room styles
+const ROOM_STYLES = ['minimal', 'mid-century', 'modern'];
+
 const ModelThumbnail = ({ imageId }: { imageId: string }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -95,6 +98,7 @@ function App() {
   const [showPrompt, setShowPrompt] = useState<boolean>(false);
   const [isReplaced, setIsReplaced] = useState<boolean>(false);
   const [suggestedScenes, setSuggestedScenes] = useState<SearchResult[][]>([]);
+  const [selectedDesignIndex, setSelectedDesignIndex] = useState<number>(-1);
 
   const handleAddDoor = (door: DoorWindow) => {
     setDoors([...doors, door])
@@ -223,7 +227,7 @@ function App() {
   const handleSelectDesign = (index: number) => {
     if (designOptions && designOptions.length > index) {
       setDesign(designOptions[index]);
-      setDesignOptions(undefined); // Clear options once a design is selected
+      setSelectedDesignIndex(index);
       setResult({
         success: true,
         message: 'Design selected successfully.'
@@ -245,10 +249,11 @@ function App() {
     setDesign(undefined)
     setDesignOptions(undefined)
     setSelectedFurniture(null)
+    setSelectedDesignIndex(-1)
     
     try {
       // Generate designs for different styles
-      const promises = ['minimal', 'mid-century', 'modern'].map(async (style) => {
+      const promises = ROOM_STYLES.map(async (style) => {
         const roomSpec = {
           ...baseRoomSpec, 
           style: style as 'minimal' | 'mid-century' | 'modern'
@@ -277,8 +282,31 @@ function App() {
   return (
     <div className="app">
       <header>
-        <h1>InteriorRec</h1>
-        <h2>Interior Design Recommendation</h2>
+        <div className="header-content">
+          <div className="logo-title">
+            <h1>InteriorRec</h1>
+            <h2>Interior Design Recommendation</h2>
+          </div>
+          
+          {designOptions && designOptions.length > 0 && (
+            <div className="design-selector">
+              <label htmlFor="design-dropdown">Design Style: </label>
+              <select 
+                id="design-dropdown"
+                value={selectedDesignIndex}
+                onChange={(e) => handleSelectDesign(Number(e.target.value))}
+                className="design-dropdown"
+              >
+                <option value="-1" disabled>Select a design</option>
+                {ROOM_STYLES.map((style, index) => (
+                  <option key={style} value={index}>
+                    {style.charAt(0).toUpperCase() + style.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </header>
       
       <main>
