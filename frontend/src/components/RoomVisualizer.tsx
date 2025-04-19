@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { Canvas, useThree, useFrame, useLoader } from '@react-three/fiber';
-import { OrbitControls, Box, Plane, Text, useTexture } from '@react-three/drei';
+import { OrbitControls, Box, Plane, Text, useTexture, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import { DoorWindow } from '../types';
 import Furniture from './Furniture';
@@ -242,6 +242,29 @@ const Wall = ({ length, height, thickness, position, rotation, wall, doors, wind
   );
 };
 
+interface CameraControllerProps {
+  position: THREE.Vector3 | null;
+  controlsRef: React.RefObject<any>;
+}
+const CameraController: React.FC<CameraControllerProps> = ({ position, controlsRef }) => {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    console.log(controlsRef.current, position);
+    if (position && controlsRef.current) {
+      console.log("Here");
+      // move camera
+      camera.position.copy(position);
+      // aim controls at room center
+      controlsRef.current.target.set(0, 0, 0);
+      controlsRef.current.update();
+    }
+  }, [position, camera, controlsRef]);
+
+  return null;
+};
+
+
 const RoomVisualizer = ({ 
   roomLength, 
   roomWidth, 
@@ -253,10 +276,20 @@ const RoomVisualizer = ({
   onFurniturePositionChange
 }: RoomVisualizerProps) => {
   const [showWalls, setShowWalls] = useState(true);
+  const [jumpTo, setJumpTo] = useState<THREE.Vector3 | null>(null);
+
+  // define your “inside” position (x,y,z)
+  const insidePosition = new THREE.Vector3(roomLength/2, 5, roomWidth/2-1);
+  // default orbit‐start
+  const defaultPosition = new THREE.Vector3(15, 15, 15);
+
+  // ref for the OrbitControls instance
+  const controlsRef = useRef<any>(null);
 
   return (
     <div style={{ width: '100%', height: '100%', backgroundColor: '#f5f5f5', borderRadius: '16px', overflow: 'hidden', position: 'relative' }}>
       <Canvas shadows camera={{ position: [15, 15, 15], fov: 75 }}>
+      <PerspectiveCamera makeDefault position={defaultPosition.toArray()} fov={75} />
         <ambientLight intensity={0.3} />
         <directionalLight
           position={[10, 10, 5]}
@@ -265,6 +298,7 @@ const RoomVisualizer = ({
           shadow-mapSize-width={1024}
           shadow-mapSize-height={1024}
         />
+        <CameraController position={jumpTo}  controlsRef={controlsRef} />
         <Room 
           roomLength={roomLength} 
           roomWidth={roomWidth} 
@@ -276,10 +310,26 @@ const RoomVisualizer = ({
           selectedFurniture={selectedFurniture}
           onFurniturePositionChange={onFurniturePositionChange}
         />
-        <OrbitControls makeDefault />
+        <OrbitControls ref={controlsRef} makeDefault />
         <gridHelper args={[30, 30, `white`, `gray`]} />
       </Canvas>
-      <button
+      <div style={{ position: 'absolute', bottom: 20, right: 20, display: 'flex', gap: '8px' }}>
+        <button
+          onClick={() => setJumpTo(insidePosition)}
+          style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#4caf50', color: 'white' }}
+        >
+          Jump Inside
+        </button>
+        <button
+          onClick={() => {
+            setJumpTo(new THREE.Vector3(15, 15, 15));
+          }}
+          style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#2196f3', color: 'white' }}
+        >
+          Reset View
+        </button>
+      </div>
+      {/* <button
         onClick={() => setShowWalls(!showWalls)}
         style={{
           position: 'absolute',
@@ -295,7 +345,7 @@ const RoomVisualizer = ({
         }}
       >
         {showWalls ? 'Hide Walls' : 'Show Walls'}
-      </button>
+      </button> */}
     </div>
   );
 };
