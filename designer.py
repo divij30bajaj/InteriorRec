@@ -2,7 +2,11 @@ import json
 import math
 import os
 from io import BytesIO
+import matplotlib
 
+import utils
+
+matplotlib.use('Agg')
 import matplotlib.image as mpimg
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
@@ -17,7 +21,8 @@ from utils import extract_info
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 class Designer:
     def __init__(self, room_dimensions, scene_image, constraints, requirement, verbose=False):
-        self.model = Model(key=OPENAI_API_KEY)
+        in_context_examples = self.load_in_context(requirement.replace(" ", "_"))
+        self.model = Model(key=OPENAI_API_KEY, in_context_examples=in_context_examples)
         self.num_rows = room_dimensions[0]
         self.num_cols = room_dimensions[1]
         self.scene_image = scene_image  # Now a BytesIO object
@@ -36,7 +41,15 @@ class Designer:
         
         self.list_of_objects = []
         self.design = []
-    
+
+    def load_in_context(self, folder_name):
+        in_context_examples = []
+        path = "in_context_examples/" + folder_name
+        for file in os.listdir(path):
+            encoded_image = utils.encode_image(os.path.join(path, file))
+            in_context_examples.append(encoded_image)
+        return in_context_examples
+
     def place_object(self, box, name, source_image, target_buffer):
         """
         Places an object on the room image.
@@ -99,14 +112,18 @@ class Designer:
         target_buffer.seek(0)
 
     async def understand_image_and_task(self):
-        introductory = f"""You are an seasoned interior designer. Given this layout of a room. The surrounding gray area is marked as walls and the red blocks
-        denote the door and windows. Given the following requirements, I want to design an **aesthetically pleasing {self.requirement}**. 
-        The cells highlighted in color (walls, door, window) are blocked and cannot be used to keep any items. First, suggest a color in HEX format for the walls and list the furniture items 
-        (not bedding, vase etc.) to be placed in the room, sorted by their size in decreasing order.
-        Keep in mind that I will ask you to place these objects on the grid in 
-        later prompts. Give your output in 2 lines:\nCOLOR: <Wall color as #xxxxxx>\nJSON: <[{{"name": "name of the furniture", "color": <color of the furniture>, "description": "a short description"}}, ...]>"""
+        introductory = f"""You are an seasoned interior designer. Given this layout of a room. The surrounding gray 
+        area is marked as walls and the red blocks denote the door and windows. Given the following requirements, 
+        I want to design an **aesthetically pleasing {self.requirement}**. The cells highlighted in color (walls, 
+        door, window) are blocked and cannot be used to keep any items. First, study the attached examples of how the 
+        room should look like and notice the relative placements of all furniture items. Next, suggest a decently vibrant color in HEX 
+        format for the walls and list the furniture items (not bedding, vase etc.) to be placed in the room, 
+        sorted by their size in decreasing order. ALWAYS include a lamp and a rug. Keep in mind that I will ask you to place 
+        these objects on the grid in later prompts. Give your output in 2 lines:\nCOLOR: <Wall color as 
+        #xxxxxx>\nJSON: <[{{"name": "name of the furniture", "color": <color of the furniture>, "description": "a 
+        short description"}}, ...]> """
 
-        response = await self.model.query(introductory, self.scene_image)
+        response = await self.model.query(introductory, self.scene_image, in_context=True)
         if self.verbose:
             print("understand_image_and_task - Input:", introductory)
             print("understand_image_and_task - Output:", response)
@@ -173,7 +190,7 @@ class Designer:
             print("critic_response - Input:", critic_prompt)
             print("critic_response - Output:", critic_response)
         start_row, start_col, orientation = extract_info(critic_response)
-        end_col, end_row = (start_col + width, start_row + length) if orientation.lower() == "vertical" else (
+        end_col, end_row = (start_col + width, start_row + length) if orientation.lower() in ["north","south"] else (
         start_col + length, start_row + width)
 
         row_str = f"Rows {start_row} to {end_row}" if start_row != end_row else f"Rows {start_row}"
@@ -181,7 +198,7 @@ class Designer:
         blocked_cells.append(f"{name}: {row_str}, {col_str}")
         self.design.pop()
         self.design.append(
-            {"object": name, "start": (start_row, start_col), "end": (end_row, end_col), "item_id": item_id})
+            {"object": name, "start": (start_row, start_col), "end": (end_row, end_col), "facing": orientation.lower(), "item_id": item_id})
         return start_col, start_row, end_col, end_row
 
     async def run_critic(self, name, source_image, item_id, length, width):
@@ -198,9 +215,9 @@ class Designer:
             print("critic_response - Input:", critic_prompt)
             print("critic_response - Output:", critic_response)
         start_row, start_col, orientation = extract_info(critic_response)
-        end_col, end_row = (start_col + width, start_row + length) if orientation.lower() == "vertical" else (start_col + length, start_row + width)
+        end_col, end_row = (start_col + width, start_row + length) if orientation.lower() in ["north", "south"] else (start_col + length, start_row + width)
 
-        self.design.append({"object": name, "start": (start_row, start_col), "end": (end_row, end_col), "item_id": item_id})
+        self.design.append({"object": name, "start": (start_row, start_col), "end": (end_row, end_col), "facing": orientation.lower(), "item_id": item_id})
         self.place_object((start_col, start_row, end_col, end_row), name, source_image, self.final_image)
 
     async def add_objects(self):
@@ -228,10 +245,15 @@ class Designer:
             print("retrieved_object: ", retrieved_object["item_id"], retrieved_object["dimensions"], length, width)
             iterative_prompt = f"""You are an seasoned interior designer who is great at creating the best interior designs by placing the furnitures
             at their best places according to the requirements and furniture already placed. We want to place the {name} in the room.
-            The {name} is {length} cells long and {width} cells wide respectively.
-            The cells blocked because of already placed furniture until now are: {blocked_cells}\nThen, output your logic to place the {name} by not including any cells that are in 
-            the blocked list. In the end, write the following in 2 different lines and nothing else:\nGRID: <Start row number>, 
-            <start column number>\nORIENTATION: <Orientation of the {name}> """
+            The {name} is {length} cells long and {width} cells wide respectively. The top wall in the image denotes the North direction. """
+
+            if name != "rug":
+                iterative_prompt += f"""The cells blocked because of already placed furniture until now are: {blocked_cells}\nThen, output your logic to place the {name} by not including any cells that are in 
+                the blocked list. """
+            else:
+                iterative_prompt += f"""Then, output your logic to place the {name} in the best possible way, ideally beneath the bed. """
+            iterative_prompt += f"""In the end, write the following in 2 different lines and nothing else:\nGRID: <Start row number>, 
+                <start column number>\nORIENTATION: <Direction in which the object should face: North/East/South/West> """
             
             source_image = self.scene_image if i == 0 else self.final_image
             
@@ -241,8 +263,9 @@ class Designer:
                 print("add_objects for ", name, " - Output:", response)
 
             start_row, start_col, orientation = extract_info(response)
-            end_col, end_row = (start_col + width, start_row + length) if orientation.lower() == "vertical" else (start_col + length, start_row + width)
+            end_col, end_row = (start_col + width, start_row + length) if orientation.lower() in ["north", "south"] else (start_col + length, start_row + width)
 
+            print("Orient", name, orientation, length, width, start_row, end_row, start_col, end_col)
             row_str = f"Rows {start_row} to {end_row}" if start_row != end_row else f"Rows {start_row}"
             col_str = f"Columns {start_col} to {end_col}" if start_col != end_col else f"Columns {start_col}"
             blocked_cells.append(f"{name}: {row_str}, {col_str}")
@@ -253,8 +276,8 @@ class Designer:
             is_overlapping = self.detect_overlap(blocked_cells, box)
 
             num_attempts = 0
-            self.design.append({"object": name, "start": (start_row, start_col), "end": (end_row, end_col), "item_id": retrieved_object["item_id"]})
-            while num_attempts < 3 and is_overlapping:
+            self.design.append({"object": name, "start": (start_row, start_col), "end": (end_row, end_col), "facing": orientation.lower(), "item_id": retrieved_object["item_id"]})
+            while name != "rug" and num_attempts < 3 and is_overlapping:
                 print("Attempt {} - Overlapping object detected!\nBlocked cells: {}\nPlaced cells: {}".format(num_attempts+1, blocked_cells, box))
                 blocked_cells.pop()
                 box = await self.run_rule_based_critic(name, blocked_cells, retrieved_object["item_id"], length, width)
@@ -263,7 +286,13 @@ class Designer:
 
                 self.place_object(box, name, source_image, self.intermediate_image)
             self.place_object(box, name, source_image, self.final_image)
-            # self.run_critic(name, image_path, retrieved_object["item_id"], length, width)
+
+        # self.final_image.seek(0)
+        #
+        # # write all bytes to disk
+        # with open(f'{self.requirement.replace(" ", "_")}_output.png', 'wb') as f:
+        #     f.write(self.final_image.getvalue())
+
 
     def write_to_json(self, save_to_file=False):
         """
@@ -288,8 +317,7 @@ class Designer:
         await self.add_objects()
         return wall_color, self.write_to_json()
 
-    async def run_with_style(self, style):
-        self.requirement = style + " " + self.requirement
+    async def run_with_style(self):
         wall_color = await self.understand_image_and_task()
         await self.add_objects()
         return wall_color, self.write_to_json()

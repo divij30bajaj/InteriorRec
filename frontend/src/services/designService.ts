@@ -5,6 +5,7 @@ export interface DesignItem {
   start: [number, number];
   end: [number, number];
   item_id: string;
+  facing: string;
 }
 
 export interface RoomDesign {

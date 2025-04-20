@@ -12,6 +12,7 @@ interface RoomVisualizerProps {
   doors: DoorWindow[];
   windows: DoorWindow[];
   design?: RoomDesign;
+  setLightPosition: (position: [number, number, number]) => void;
   onFurnitureSelect?: (item: DesignItem | null) => void;
   selectedFurniture?: DesignItem | null;
   onFurniturePositionChange?: (itemId: string, position: [number, number, number]) => void;
@@ -59,6 +60,7 @@ const Room = ({
   roomWidth, 
   doors, 
   windows, 
+  setLightPosition,
   showWalls = true, 
   design,
   onFurnitureSelect,
@@ -182,6 +184,7 @@ const Room = ({
             item={item}
             position={position}
             scale={3}
+            setLightPosition={setLightPosition}
             isSelected={selectedFurniture?.item_id === item.item_id}
             onSelect={() => onFurnitureSelect?.(item)}
           />
@@ -207,7 +210,8 @@ const Wall = ({ length, height, thickness, position, rotation, wall, doors, wind
   // Filter doors and windows for this wall
   const wallDoors = doors.filter(door => door.wall === wall);
   const wallWindows = windows.filter(window => window.wall === wall);
-  
+  const windowTexture = useTexture('/textures/window.jpg');
+
   return (
     <group position={position} rotation={rotation}>
       {/* Main wall */}
@@ -220,7 +224,7 @@ const Wall = ({ length, height, thickness, position, rotation, wall, doors, wind
         <Box 
           key={`door-${index}`}
           args={[door.width, door.height, thickness * 1.1]} 
-          position={[(door.position - 0.5) * length, (door.height / 2) - (height / 2), 0]}
+          position={[(0.5 - door.position) * length, (door.height / 2) - (height / 2), 0]}
           castShadow
         >
           <meshStandardMaterial color="brown" />
@@ -235,7 +239,7 @@ const Wall = ({ length, height, thickness, position, rotation, wall, doors, wind
           position={[(window.position - 0.5) * length, (window.height / 2), 0]}
           castShadow
         >
-          <meshStandardMaterial color="lightblue" transparent opacity={0.6} />
+          <meshStandardMaterial map={windowTexture} />
         </Box>
       ))}
     </group>
@@ -264,6 +268,70 @@ const CameraController: React.FC<CameraControllerProps> = ({ position, controlsR
   return null;
 };
 
+type ConeLightProps = {
+  /** world coords of the bulb */
+  position: [number, number, number];
+  /** world coords where the light cone should point */
+  targetPosition: [number, number, number];
+  /** spotlight cone half‑angle (radians) */
+  angle?: number;
+  /** edge softness [0–1] */
+  penumbra?: number;
+  /** brightness */
+  intensity?: number;
+  /** how far the light reaches */
+  distance?: number;
+  /** decay exponent */
+  decay?: number;
+  /** set true to show a SpotLightHelper */
+  debugHelper?: boolean;
+};
+
+const ConeLight: React.FC<ConeLightProps> = ({
+  position,
+  targetPosition,
+  angle = Math.PI / 6,
+  penumbra = 0.2,
+  intensity = 1.2,
+  distance = 10,
+  decay = 2,
+}) => {
+  const lightRef = useRef<THREE.SpotLight>(null);
+
+
+  return (
+    <group>
+      {/* 1) Bulb mesh */}
+      {/* <mesh position={position}>
+        <sphereGeometry args={[0.15, 16, 16]} />
+        <meshStandardMaterial
+          emissive={new THREE.Color(0xffffaa)}
+          emissiveIntensity={1}
+          color="black"
+        />
+      </mesh> */}
+
+      {/* 2) The actual cone light */}
+      <spotLight
+        ref={lightRef}
+        position={position}
+        angle={angle}
+        penumbra={penumbra}
+        intensity={intensity}
+        distance={distance}
+        decay={decay}
+        castShadow
+        shadow-mapSize-width={512}
+        shadow-mapSize-height={512}
+      >
+        {/* attach an invisible object3D as the .target */}
+        <object3D attach="target" position={targetPosition} />
+      </spotLight>
+    </group>
+  );
+};
+
+
 
 const RoomVisualizer = ({ 
   roomLength, 
@@ -285,6 +353,7 @@ const RoomVisualizer = ({
 
   // ref for the OrbitControls instance
   const controlsRef = useRef<any>(null);
+  const [lightPosition, setLightPosition] = useState<[number, number, number]>([0, 0, 0]);
 
   return (
     <div style={{ width: '100%', height: '100%', backgroundColor: '#f5f5f5', borderRadius: '16px', overflow: 'hidden', position: 'relative' }}>
@@ -292,7 +361,7 @@ const RoomVisualizer = ({
       <PerspectiveCamera makeDefault position={defaultPosition.toArray()} fov={75} />
         <ambientLight intensity={0.3} />
         <directionalLight
-          position={[10, 10, 5]}
+          position={[roomLength/2, 15, roomWidth/2-1]}
           intensity={1}
           castShadow
           shadow-mapSize-width={1024}
@@ -306,10 +375,24 @@ const RoomVisualizer = ({
           windows={windows}
           showWalls={showWalls}
           design={design}
+          setLightPosition={setLightPosition}
           onFurnitureSelect={onFurnitureSelect}
           selectedFurniture={selectedFurniture}
           onFurniturePositionChange={onFurniturePositionChange}
         />
+        {design && <ConeLight
+          position={lightPosition}        // lamp’s world xyz
+          targetPosition={[
+            lightPosition[0] - lightPosition[2],
+            3,
+            lightPosition[2] + lightPosition[0]
+          ]}     // where the cone aims
+          angle={Math.PI / 1.5}            // wider cone
+          penumbra={0.3}                 // softer edge
+          intensity={70}
+          distance={15}
+          decay={2}
+        />}
         <OrbitControls ref={controlsRef} makeDefault />
         <gridHelper args={[30, 30, `white`, `gray`]} />
       </Canvas>
@@ -329,23 +412,6 @@ const RoomVisualizer = ({
           Reset View
         </button>
       </div>
-      {/* <button
-        onClick={() => setShowWalls(!showWalls)}
-        style={{
-          position: 'absolute',
-          bottom: '20px',
-          right: '20px',
-          padding: '8px 16px',
-          backgroundColor: showWalls ? '#ff4757' : '#4caf50',
-          color: 'white',
-          border: 'none',
-          borderRadius: '6px',
-          cursor: 'pointer',
-          zIndex: 10
-        }}
-      >
-        {showWalls ? 'Hide Walls' : 'Show Walls'}
-      </button> */}
     </div>
   );
 };
