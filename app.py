@@ -16,6 +16,7 @@ from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
 
 import retriever
+from image_retrieval import ImageRetrieval
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,6 +33,15 @@ try:
 except FileNotFoundError as e:
     print(f"Warning: {e}")
     print("Please run simple_retrieval.py first to create the necessary index files")
+
+# Initialize image retrieval system
+image_retrieval_system = ImageRetrieval()
+try:
+    image_retrieval_system.load_indices()
+    print("Image retrieval system initialized successfully")
+except FileNotFoundError as e:
+    print(f"Warning: {e}")
+    print("Please run image_retrieval.py first to create the necessary index files")
 
 # Pydantic models for request validation
 class DoorWindow(BaseModel):
@@ -72,6 +82,9 @@ class SimilarItem(BaseModel):
     description: str
     image_id: str|None
 
+class ImageRetrievalQuery(BaseModel):
+    query_object: QueryObject
+    k: int = 10
 
 app = FastAPI()
 
@@ -428,3 +441,36 @@ async def s3_proxy(item_id: str):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching model: {str(e)}")
+
+@app.post("/retrieve-items-image-rnk", response_model=List[SimilarItem])
+async def retrieve_items_image(query: ImageRetrievalQuery):
+    try:
+        # Get the item details from data_map
+        itemId = query.query_object.selectedItemId
+        
+        # Create query object with material, style, and keywords
+        query_object = {
+            "user_query": query.query_object.user_query,
+            "selectedItemId": itemId
+        }
+        
+        # Process query using SimpleRetrieval to get boolean and text queries
+        boolean_query, object_description = await image_retrieval_system.simple_retrieval.process_query(query_object)
+        
+        # Use the processed queries in hybrid search
+        results = image_retrieval_system.hybrid_search(
+            boolean_query,
+            object_description,
+            k=query.k
+        )
+        
+        return [SimilarItem(
+            item_id=item["item_id"],
+            description=item.get("description", ""),
+            image_id=item.get("image_id")
+        ) for item in results]
+        
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
