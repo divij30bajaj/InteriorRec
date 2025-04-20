@@ -63,6 +63,7 @@ class DesignItem(BaseModel):
     start: Tuple[int, int]
     end: Tuple[int, int]
     item_id: str
+    facing: str
 
 class DesignResponse(BaseModel):
     items: List[DesignItem]
@@ -365,15 +366,16 @@ async def generate_design(room_spec: RoomSpec):
             })
         
         # Initialize and run the designer
+        requirement = f"{room_spec.style} {room_spec.roomType}"
         designer = Designer(
             room_dimensions=(num_rows, num_cols),
             scene_image=img_io,
             constraints=constraints,
-            requirement=room_spec.roomType,
+            requirement=requirement,
             verbose=True
         )
         
-        wall_color, items = await designer.run_with_style(room_spec.style)
+        wall_color, items = await designer.run_with_style()
         
         return {"items": items, "wallColor": wall_color}
 
