@@ -445,31 +445,18 @@ async def s3_proxy(item_id: str):
 @app.post("/retrieve-items-image-rnk", response_model=List[SimilarItem])
 async def retrieve_items_image(query: ImageRetrievalQuery):
     try:
-        # Get the item details from data_map
-        itemId = query.query_object.selectedItemId
-        
-        # Create query object with material, style, and keywords
-        query_object = {
-            "user_query": query.query_object.user_query,
-            "selectedItemId": itemId
-        }
-        
-        # Process query using SimpleRetrieval to get boolean and text queries
-        boolean_query, object_description = await image_retrieval_system.simple_retrieval.process_query(query_object)
-        
-        # Use the processed queries in hybrid search
-        results = image_retrieval_system.hybrid_search(
-            boolean_query,
-            object_description,
+        # Get results using the query object
+        results = await image_retrieval_system.retrieve_with_query_object(
+            query.query_object.dict(),
             k=query.k
         )
         
-        return [SimilarItem(
-            item_id=item["item_id"],
-            description=item.get("description", ""),
-            image_id=item.get("image_id")
-        ) for item in results]
+        return results
         
+    except RateLimitError as e:
+        print(f"Rate limit reached: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached. Please try again later.")
     except Exception as e:
         print(e)
         traceback.print_exc()

@@ -5,11 +5,11 @@ from typing import Dict, List, Set, Tuple, Optional
 import re
 import os
 import argparse
-from openai import RateLimitError
-from openai import OpenAI
-import asyncio
-from sentence_transformers import SentenceTransformer
-from designer import OPENAI_API_KEY
+# from openai import RateLimitError
+# from openai import OpenAI
+# import asyncio
+# from sentence_transformers import SentenceTransformer
+# from designer import OPENAI_API_KEY
 
 
 class SimpleRetrieval:
@@ -22,8 +22,8 @@ class SimpleRetrieval:
         self.item_id_file = item_id_file
         self.item_ids = []
         self.embeddings = None
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        # self.client = OpenAI(api_key=OPENAI_API_KEY)
+        # self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
         with open("embedded_data.json", "r") as f:
             data = json.load(f)

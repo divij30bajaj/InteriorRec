@@ -12,12 +12,13 @@ class ImageRetrieval(SimpleRetrieval):
     def __init__(self, 
                 mapping_file: str = 'mapping_3d_spins.json',
                 images_folder: str = 'images',
-                embeddings_file: str = 'embeddings.npy',
+                embeddings_file: str = 'img_embeddings.npy',
                 ids_file: str = 'item_ids_re_img.npy',
-                faiss_index_file: str = 'image_index.faiss'):
+                faiss_index_file: str = 'image_index.faiss',
+                index_file: str = 'inverse_index.json'):
         
-        # Initialize parent class (SimpleRetrieval)
-        super().__init__(embeddings_file=embeddings_file, item_id_file=ids_file)
+        # Initialize parent class (SimpleRetrieval) for boolean search only
+        super().__init__(index_file=index_file)
         
         print(f"Initializing ImageRetrieval with:")
         print(f"- FAISS index: {faiss_index_file}")
@@ -26,7 +27,12 @@ class ImageRetrieval(SimpleRetrieval):
         
         self.mapping_file = mapping_file
         self.images_folder = images_folder
+        self.embeddings_file = embeddings_file
+        self.ids_file = ids_file
         self.faiss_index_file = faiss_index_file
+        self.faiss_index = None
+        self.item_ids = None
+        self.embeddings = None
         
         # Initialize SIGLIP models for image processing
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -155,25 +161,63 @@ class ImageRetrieval(SimpleRetrieval):
             print(f"Error loading indices: {e}")
             raise
             
+    def retrieve_similar_siglip(self, query_embedding: np.ndarray, k: int = 10) -> List[Tuple[str, float]]:
+        """
+        Retrieve k most similar items using SIGLIP-based FAISS index
+        Returns list of (item_id, distance) tuples
+        """
+        if self.faiss_index is None:
+            raise ValueError("SIGLIP FAISS index not initialized")
+
+        distances, indices = self.faiss_index.search(query_embedding.reshape(1, -1), k)
+        return [(str(self.item_ids[idx]), float(dist)) for idx, dist in zip(indices[0], distances[0])]
+
     async def retrieve_with_query_object(self, user_input: Dict[str, str], k: int = 10) -> List[Dict[str, str]]:
         """Process query object and retrieve results using SIGLIP embeddings"""
         try:
             # Use parent class's process_query to get boolean query and description
             boolean_query, object_description = await self.process_query(user_input)
             
-            # Get results using hybrid search with SIGLIP embeddings
-            results = self.hybrid_search(boolean_query, object_description, k=k)
+            # First get items matching boolean query
+            boolean_matches = self.boolean_query(boolean_query)
+            if not boolean_matches:
+                return []
+
+            # Get SIGLIP embedding for the description
+            query_embedding = self.get_text_embedding(object_description)
             
-            # Format results with image IDs
+            # Find indices of items that match boolean query
+            matching_indices = []
+            for i, item_id in enumerate(self.item_ids):
+                if str(item_id) in boolean_matches:
+                    matching_indices.append(i)
+            
+            if not matching_indices:
+                return []
+
+            # Create a temporary FAISS index with only the matching items
+            dimension = self.embeddings.shape[1]
+            temp_index = faiss.IndexFlatL2(dimension)
+            temp_embeddings = self.embeddings[matching_indices]
+            temp_index.add(temp_embeddings)
+            
+            # Search in filtered index using SIGLIP embedding
+            distances, local_indices = temp_index.search(
+                query_embedding.reshape(1, -1), 
+                min(k, len(matching_indices))
+            )
+            
+            # Map back to original item IDs and create results
             final_results = []
-            for item_id, score in results:
+            for idx, dist in zip(local_indices[0], distances[0]):
+                item_id = str(self.item_ids[matching_indices[idx]])
                 item_description = self.data_map[item_id]["description"]
                 image_id = self.mapping[item_id] if item_id in self.mapping else None
                 final_results.append({
                     "item_id": item_id,
                     "description": item_description,
                     "image_id": image_id,
-                    "score": score
+                    "score": float(dist)
                 })
             
             return final_results
@@ -182,15 +226,57 @@ class ImageRetrieval(SimpleRetrieval):
             print(f"Error in retrieval: {e}")
             raise
 
+    def get_item_image_embedding(self, item_id: str) -> Optional[np.ndarray]:
+        """Get the SIGLIP image embedding for a given item_id"""
+        try:
+            # Find the index of the item_id in our item_ids array
+            item_idx = np.where(self.item_ids == item_id)[0]
+            if len(item_idx) == 0:
+                print(f"Item ID {item_id} not found in image embeddings")
+                return None
+                
+            # Get the embedding at that index
+            embedding = self.embeddings[item_idx[0]]
+            return embedding
+            
+        except Exception as e:
+            print(f"Error getting image embedding: {e}")
+            return None
+
+    def append_image_embeddings_to_json(self, json_file: str = 'embedded_data.json'):
+        """Append image embeddings to the embedded_data.json file"""
+        try:
+            # Load the existing JSON data
+            with open(json_file, 'r') as f:
+                data = json.load(f)
+            
+            # Add image embeddings to each item
+            for item in data:
+                item_id = item['item_id']
+                image_embedding = self.get_item_image_embedding(item_id)
+                if image_embedding is not None:
+                    item['image_embedding'] = image_embedding.tolist()
+            
+            # Save the updated data
+            with open(json_file, 'w') as f:
+                json.dump(data, f)
+                
+            print(f"Successfully added image embeddings to {json_file}")
+            
+        except Exception as e:
+            print(f"Error appending image embeddings: {e}")
+            raise
+
 def main():
     # Example usage
     retrieval = ImageRetrieval()
     retrieval.build_and_save_index()
     
-    # Test hybrid search
-    results = retrieval.hybrid_search(
+    # Test boolean and similarity search
+    text_query = "Modern wooden dining table with sleek design"
+    results = retrieval.retrieve_with_boolean_and_similarity(
         boolean_query="modern AND wood AND table AND dining",
-        text_query="Modern wooden dining table with sleek design",
+        query_embedding=retrieval.get_text_embedding(text_query),
         k=5
     )
     print("Search results:", results)
