@@ -15,7 +15,7 @@ class ImageRetrieval(SimpleRetrieval):
                 embeddings_file: str = 'img_embeddings.npy',
                 ids_file: str = 'item_ids_re_img.npy',
                 faiss_index_file: str = 'image_index.faiss',
-                index_file: str = 'inverse_index.json'):
+                index_file: str = 'new_inverse_index.json'):
         
         # Initialize parent class (SimpleRetrieval) for boolean search only
         super().__init__(index_file=index_file)
@@ -53,6 +53,10 @@ class ImageRetrieval(SimpleRetrieval):
             print(f"Error loading mapping file: {e}")
             self.mapping = {}
             
+        with open("image_embedding_data.json", "r") as f:
+            data = json.load(f)
+            self.data_map = {item["item_id"]: item for item in data}
+        
     def get_text_embedding(self, text: str) -> np.ndarray:
         """Override: Get embedding for text using SIGLIP text model"""
         with torch.no_grad():
@@ -243,8 +247,8 @@ class ImageRetrieval(SimpleRetrieval):
             print(f"Error getting image embedding: {e}")
             return None
 
-    def append_image_embeddings_to_json(self, json_file: str = 'embedded_data.json'):
-        """Append image embeddings to the embedded_data.json file"""
+    def append_image_embeddings_to_json(self, json_file: str = 'image_embedding_data.json'):
+        """Append image embeddings to the image_embedding_data.json file"""
         try:
             # Load the existing JSON data
             with open(json_file, 'r') as f:

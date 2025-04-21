@@ -5,15 +5,15 @@ from typing import Dict, List, Set, Tuple, Optional
 import re
 import os
 import argparse
-# from openai import RateLimitError
-# from openai import OpenAI
-# import asyncio
-# from sentence_transformers import SentenceTransformer
-# from designer import OPENAI_API_KEY
+from openai import RateLimitError
+from openai import OpenAI
+import asyncio
+from sentence_transformers import SentenceTransformer
+from designer import OPENAI_API_KEY
 
 
 class SimpleRetrieval:
-    def __init__(self, index_file: str = 'inverse_index.json', embeddings_file: str = 'embeddings.npy', item_id_file: str = 'item_ids.npy'):
+    def __init__(self, index_file: str = 'new_inverse_index.json', embeddings_file: str = 'embeddings.npy', item_id_file: str = 'item_ids.npy'):
         self.index_file = index_file
         self.embeddings_file = embeddings_file
         self.index: Dict[str, Set[str]] = {}
@@ -22,10 +22,10 @@ class SimpleRetrieval:
         self.item_id_file = item_id_file
         self.item_ids = []
         self.embeddings = None
-        # self.client = OpenAI(api_key=OPENAI_API_KEY)
-        # self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.client = OpenAI(api_key=OPENAI_API_KEY)
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
-        with open("embedded_data.json", "r") as f:
+        with open("image_embedding_data.json", "r") as f:
             data = json.load(f)
             self.data_map = {item["item_id"]: item for item in data}
 
@@ -440,7 +440,7 @@ class SimpleRetrieval:
                 for idx, dist in zip(local_indices[0], distances[0])]
 
 
-def build_index(data_file: str, index_file: str = 'inverse_index.json'):
+def build_index(data_file: str, index_file: str = 'new_inverse_index.json'):
     """One-time function to build and save the inverse index"""
     retrieval = SimpleRetrieval(index_file=index_file)
     retrieval.build_and_save_index(data_file)
@@ -449,9 +449,9 @@ def build_index(data_file: str, index_file: str = 'inverse_index.json'):
 
 def main():
     parser = argparse.ArgumentParser(description='Build inverse index from embedded data')
-    parser.add_argument('--data_file', type=str, default='embedded_data.json',
+    parser.add_argument('--data_file', type=str, default='image_embedding_data.json',
                         help='Path to the embedded data JSON file')
-    parser.add_argument('--index_file', type=str, default='inverse_index.json',
+    parser.add_argument('--index_file', type=str, default='new_inverse_index.json',
                         help='Path to save the inverse index JSON file')
     parser.add_argument('--embeddings_file', type=str, default='embeddings.npy',
                         help='Path to save the embeddings numpy file')

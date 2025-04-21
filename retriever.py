@@ -9,7 +9,7 @@ model = SentenceTransformer('all-MiniLM-L6-v2')
 LIKED_BOOST = 0.25
 DISLIKED_BOOST = -0.25
 
-with open("embedded_data.json", "r") as f:
+with open("image_embedding_data.json", "r") as f:
     data = json.load(f)
     data_map = {item["item_id"]: item for item in data}
 
