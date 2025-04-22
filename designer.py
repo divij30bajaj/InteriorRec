@@ -2,6 +2,7 @@ import json
 import math
 import os
 from io import BytesIO
+
 import matplotlib
 
 import utils
@@ -46,8 +47,9 @@ class Designer:
         in_context_examples = []
         path = "in_context_examples/" + folder_name
         for file in os.listdir(path):
-            encoded_image = utils.encode_image(os.path.join(path, file))
-            in_context_examples.append(encoded_image)
+            if file.endswith(".jpeg"):
+                encoded_image = utils.encode_image(os.path.join(path, file))
+                in_context_examples.append(encoded_image)
         return in_context_examples
 
     def place_object(self, box, name, source_image, target_buffer):

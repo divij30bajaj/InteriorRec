@@ -4,8 +4,11 @@ import random
 
 import torch
 from sentence_transformers import SentenceTransformer, util
+from transformers import AutoModel, AutoProcessor, AutoTokenizer, SiglipTextModel
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+text_tokenizer = AutoTokenizer.from_pretrained("google/siglip-base-patch16-224")
+text_model = SiglipTextModel.from_pretrained("google/siglip-base-patch16-224").to(device)
 LIKED_BOOST = 0.25
 DISLIKED_BOOST = -0.25
 
@@ -33,7 +36,10 @@ async def simple_retriever(query_embedding, item_embeddings, top_k: int = 1):
 
 async def retrieve(query: str = "a yellow sofa", top_k: int = 1):
     print("simple_retriever: ", query)
-    query_embedding = model.encode(query, convert_to_tensor=True)
+    inputs = text_tokenizer([query], padding="max_length", truncation=True, return_tensors="pt").to(device)
+    query_embedding = text_model(**inputs)
+    query_embedding = query_embedding.pooler_output.cpu().detach().numpy().astype("float32")[0]
+    # query_embedding = text_model.encode(query, convert_to_tensor=True)
     
     return await simple_retriever(query_embedding, stored_embeddings, top_k)
 

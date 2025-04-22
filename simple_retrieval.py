@@ -1,14 +1,15 @@
-import json
-import numpy as np
-import faiss
-from typing import Dict, List, Set, Tuple, Optional
-import re
-import os
 import argparse
-from openai import RateLimitError
-from openai import OpenAI
 import asyncio
+import json
+import os
+import re
+from typing import Dict, List, Optional, Set, Tuple
+
+import faiss
+import numpy as np
+from openai import OpenAI, RateLimitError
 from sentence_transformers import SentenceTransformer
+
 from designer import OPENAI_API_KEY
 
 
@@ -108,7 +109,8 @@ class SimpleRetrieval:
             if not boolean_query or not object_description:
                 boolean_query = response_text.split("Boolean Query:")[1].split("Object Description:")[0].strip()
                 object_description = response_text.split("Object Description:")[1].strip()
-
+            print("boolean_query", boolean_query)
+            print("object_description", object_description)
             return boolean_query, object_description
 
         except RateLimitError as e:
