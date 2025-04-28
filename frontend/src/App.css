@@ -66,10 +66,56 @@ header {
   margin-bottom: 30px;
 }
 
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 10px;
+}
+
+.logo-title {
+  text-align: left;
+}
+
+.design-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: #f8f9fa;
+  padding: 8px 15px;
+  border-radius: 8px;
+}
+
+.design-selector label {
+  font-weight: 500;
+  color: #444;
+}
+
+.design-dropdown {
+  min-width: 160px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background-color: white;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
 header h1 {
   font-size: 2rem;
   color: #333;
   font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .header-content {
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .logo-title {
+    text-align: center;
+  }
 }
 
 .room-designer {

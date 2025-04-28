@@ -165,7 +165,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, selectedItem
       }
     );
     const data = await goesWithItemsResult.json();
-    console.log(data);
+    console.log("handleGoesWith", data);
     setGoesWithItems(data);
   };
 

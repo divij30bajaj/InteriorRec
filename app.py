@@ -16,6 +16,7 @@ from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
 
 import retriever
+from image_retrieval import ImageRetrieval
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,6 +33,15 @@ try:
 except FileNotFoundError as e:
     print(f"Warning: {e}")
     print("Please run simple_retrieval.py first to create the necessary index files")
+
+# Initialize image retrieval system
+image_retrieval_system = ImageRetrieval()
+try:
+    image_retrieval_system.load_indices()
+    print("Image retrieval system initialized successfully")
+except FileNotFoundError as e:
+    print(f"Warning: {e}")
+    print("Please run image_retrieval.py first to create the necessary index files")
 
 # Pydantic models for request validation
 class DoorWindow(BaseModel):
@@ -53,6 +63,7 @@ class DesignItem(BaseModel):
     start: Tuple[int, int]
     end: Tuple[int, int]
     item_id: str
+    facing: str
 
 class DesignResponse(BaseModel):
     items: List[DesignItem]
@@ -71,6 +82,9 @@ class SimilarItem(BaseModel):
     description: str
     image_id: str|None
 
+class ImageRetrievalQuery(BaseModel):
+    query_object: QueryObject
+    k: int = 10
 
 app = FastAPI()
 
@@ -352,15 +366,16 @@ async def generate_design(room_spec: RoomSpec):
             })
         
         # Initialize and run the designer
+        requirement = f"{room_spec.style} {room_spec.roomType}"
         designer = Designer(
             room_dimensions=(num_rows, num_cols),
             scene_image=img_io,
             constraints=constraints,
-            requirement=room_spec.roomType,
+            requirement=requirement,
             verbose=True
         )
         
-        wall_color, items = await designer.run_with_style(room_spec.style)
+        wall_color, items = await designer.run_with_style()
         
         return {"items": items, "wallColor": wall_color}
 
@@ -426,3 +441,23 @@ async def s3_proxy(item_id: str):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching model: {str(e)}")
+
+@app.post("/retrieve-items-image-rnk", response_model=List[SimilarItem])
+async def retrieve_items_image(query: ImageRetrievalQuery):
+    try:
+        # Get results using the query object
+        results = await image_retrieval_system.retrieve_with_query_object(
+            query.query_object.dict(),
+            k=query.k
+        )
+        
+        return results
+        
+    except RateLimitError as e:
+        print(f"Rate limit reached: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached. Please try again later.")
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
