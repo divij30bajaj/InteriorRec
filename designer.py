@@ -12,13 +12,19 @@ import matplotlib.image as mpimg
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
+import numpy as np
 import tqdm
+from PIL import Image
 from PIL import Image
 
 from model import Model
 from retriever import retrieve
 from utils import extract_info
+from retriever import retrieve
+from utils import extract_info
 
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 class Designer:
     def __init__(self, room_dimensions, scene_image, constraints, requirement, verbose=False):
@@ -27,11 +33,20 @@ class Designer:
         self.num_rows = room_dimensions[0]
         self.num_cols = room_dimensions[1]
         self.scene_image = scene_image  # Now a BytesIO object
+        self.scene_image = scene_image  # Now a BytesIO object
         self.requirement = requirement
         self.constraints = constraints
 
         self.verbose = verbose
 
+        # Initialize in-memory image buffers instead of file paths
+        self.intermediate_image = BytesIO()
+        self.final_image = BytesIO()
+        
+        # Initial image data is the scene image
+        self.scene_image.seek(0)
+        self.scene_array = np.array(Image.open(self.scene_image))
+        
         # Initialize in-memory image buffers instead of file paths
         self.intermediate_image = BytesIO()
         self.final_image = BytesIO()
@@ -74,12 +89,18 @@ class Designer:
 
         cell_col = image_array.shape[1] // (self.num_cols+1)
         cell_row = image_array.shape[0] // (self.num_rows+1)
+        cell_col = image_array.shape[1] // (self.num_cols+1)
+        cell_row = image_array.shape[0] // (self.num_rows+1)
 
+        bbox = ((box[0]+1) * cell_col, (box[1]+1) * cell_row, (box[2] - box[0]) * cell_col, (box[3] - box[1]) * cell_row)
+        
+        print("placing object", box, name, bbox)
         bbox = ((box[0]+1) * cell_col, (box[1]+1) * cell_row, (box[2] - box[0]) * cell_col, (box[3] - box[1]) * cell_row)
         
         print("placing object", box, name, bbox)
         fig, ax = plt.subplots()
 
+        if target_buffer == self.intermediate_image:
         if target_buffer == self.intermediate_image:
             facecolor = 'green'
         else:
@@ -127,6 +148,10 @@ class Designer:
 
         response = await self.model.query(introductory, self.scene_image, in_context=True)
         if self.verbose:
+            print("understand_image_and_task - Input:", introductory)
+            print("understand_image_and_task - Output:", response)
+        wall_color = response.split("\n")[0].replace("COLOR: ", "")
+        response = response.split("JSON: ")[1].replace("json", "").replace("```", "").strip()
             print("understand_image_and_task - Input:", introductory)
             print("understand_image_and_task - Output:", response)
         wall_color = response.split("\n")[0].replace("COLOR: ", "")
@@ -213,7 +238,11 @@ class Designer:
         number>\nORIENTATION: <Orientation of the {name}>. If current position is good, output the same position 
         again. """
         critic_response = await self.model.query(critic_prompt, self.intermediate_image)
+        again. """
+        critic_response = await self.model.query(critic_prompt, self.intermediate_image)
         if self.verbose:
+            print("critic_response - Input:", critic_prompt)
+            print("critic_response - Output:", critic_response)
             print("critic_response - Input:", critic_prompt)
             print("critic_response - Output:", critic_response)
         start_row, start_col, orientation = extract_info(critic_response)
@@ -222,6 +251,7 @@ class Designer:
         self.design.append({"object": name, "start": (start_row, start_col), "end": (end_row, end_col), "facing": orientation.lower(), "item_id": item_id})
         self.place_object((start_col, start_row, end_col, end_row), name, source_image, self.final_image)
 
+    async def add_objects(self):
     async def add_objects(self):
         blocked_cells = [f"Walls: Entire Rows 1, Rows {self.num_rows - 1}, Columns 1, Columns {self.num_cols - 1}"]
         for constraint in self.constraints:
@@ -296,6 +326,23 @@ class Designer:
         #     f.write(self.final_image.getvalue())
 
 
+    def write_to_json(self, save_to_file=False):
+        """
+        Returns the design as a JSON object and optionally saves it to a file.
+        
+        Args:
+            save_to_file: If True, saves the design to 'results/design.json'
+            
+        Returns:
+            The design as a list of objects
+        """
+        if save_to_file:
+            os.makedirs('results', exist_ok=True)
+            if os.path.exists('results/design.json'):
+                os.remove('results/design.json')
+            with open('results/design.json', 'w') as f:
+                json.dump(self.design, f)
+        return self.design
     def write_to_json(self, save_to_file=False):
         """
         Returns the design as a JSON object and optionally saves it to a file.
